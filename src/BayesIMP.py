@@ -13,7 +13,7 @@ class BayesIMP:
         self.noise_feat = noise_feat
 
     """Compute E[E[Y|do(A)]] in A -> V -> Y """
-    def post_mean(self, Y, A, V, doA):
+    def post_mean(self, Y, A, V, doA, reg = 1e-4):
         
         n = len(Y)
         
@@ -21,8 +21,8 @@ class BayesIMP:
         R_vv,K_aa,k_atest = (self.kernel_V.get_gram(V,V),
                              self.kernel_A.get_gram(A,A),
                              self.kernel_A.get_gram(doA, A))
-        R_v = R_vv+self.noise_Y*torch.eye(n)
-        K_a = K_aa+self.noise_feat*torch.eye(n)
+        R_v = R_vv+(self.noise_Y+reg)*torch.eye(n)
+        K_a = K_aa+(self.noise_feat+reg)*torch.eye(n)
 
         # Getting components
         A_a = torch.linalg.solve(K_a,k_atest.T).T
@@ -30,8 +30,8 @@ class BayesIMP:
         
         return  A_a @ R_vv @ alpha_y
         
-    """Compute Var[E[Y|Z]] in Z -> A -> Y """
-    def post_var(self, Y, A, V, doA, reg = 1e-4):
+    """Compute Var[E[Y|do(A)]] in A -> V -> Y """
+    def post_var(self, Y, A, V, doA, reg = 1e-4, latent = True):
         
         n = len(Y)
         
@@ -40,11 +40,11 @@ class BayesIMP:
                                  self.kernel_V.get_gram_base(V,V),
                                  self.kernel_A.get_gram(A,A),
                                  self.kernel_A.get_gram(doA, A))
-        R_v = R_vv+self.noise_Y*torch.eye(n)
-        K_v = K_vv+self.noise_Y*torch.eye(n)
-        K_a = K_aa+self.noise_feat*torch.eye(n)
-        R_vv_bar = R_vv - R_vv @ torch.linalg.solve(R_v,R_vv)
-        kpost_atest_approx = (k_atest @ k_atest.T - k_atest @ torch.linalg.solve(K_a,k_atest.T))
+        R_v = R_vv+(self.noise_Y+reg)*torch.eye(n)
+        K_v = K_vv+(self.noise_Y+reg)*torch.eye(n)
+        K_a = K_aa+(self.noise_feat+reg)*torch.eye(n)
+        R_vv_bar = R_vv - R_vv @ torch.linalg.solve(R_v,R_vv)+ (not latent)*self.noise_Y*torch.eye(n)
+        kpost_atest_approx = (k_atest @ k_atest.T - k_atest @ torch.linalg.solve(K_a,k_atest.T))+ (not latent)*self.noise_feat*torch.eye(len(doA))
         
         # computing matrix vector products
         alpha_a = torch.linalg.solve(K_a,k_atest.T)

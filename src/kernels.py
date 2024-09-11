@@ -37,7 +37,7 @@ class GaussianKernel(Kernel):
         
     def get_gram(self,X,Z):
         K_xz = torch.exp(-0.5*torch.cdist(X/self.lengthscale, Z/self.lengthscale, p=2.0)**2)            
-        return K_xz*self.scale*2
+        return K_xz*self.scale**2
         
 class ExponentialKernel(Kernel):
         
@@ -103,3 +103,6 @@ class ApproximateNuclearKernel:
     def get_gram_base(self, X: torch.tensor, Z: torch.tensor):
         """Returns gram matrix of base kernel"""
         return self.base_kernel.get_gram(X,Z)
+
+
+

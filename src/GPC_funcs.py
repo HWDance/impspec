@@ -1,10 +1,5 @@
 # imports
 import torch
-import gpytorch
-import matplotlib.pyplot as plt
-import os
-import numpy as np
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from functools import partial
 
 def f_x(Z,coefs):
@@ -60,7 +55,7 @@ def kernel_approximations(X_train, kernel_params, mc_approx = True, mc_samples =
         K_ss = get_gram_gaussian(X_sample, X_sample, kernel_params)
         K_xx_tilde = K_s @ K_s.T/mc_samples
         # Get eigenvalues
-        eigs = torch.eig(K_ss)[0]/mc_samples
+        eigs = torch.linalg.eig(K_ss)[0].real/mc_samples
         
     return K_xx_tilde, K_ss, eigs
 
@@ -95,7 +90,7 @@ def get_Gaussian_kernel_eigs(X_train,kernel_params, mc_approx = True, mc_samples
         measure = torch.distributions.normal.Normal(0,nu)            
         X_sample = measure.sample((mc_samples,len(X_train.T)))
         K_sample = get_gram_gaussian(X_sample, X_sample, kernel_params)
-        eigs = torch.eig(K_sample)[0]/mc_samples
+        eigs = torch.linalg.eig(K_sample)[0].real/mc_samples
     
     else: 
         a = 1/4
@@ -152,9 +147,11 @@ def marginal_posterior_covariance(Y_train,X_train,Z_train,
     alpha1 = torch.linalg.solve(K_phi,K_xx)
     alpha2 = torch.linalg.solve(K_phi,k_z2.T)
     DDKxx =  torch.linalg.solve(K_y, K_xx)
+    
     V1 = phi_post_cov*(alpha_y.T @ K_xx_tilde @ alpha_y).view(1,)
     V2 = phi_post_cov*(eigsum - torch.trace(B))
     V3 = k_z1 @ alpha1 @ (torch.eye(n) - DDKxx) @ alpha2+noise_y*(not latent)*(z2==[])*torch.eye(len(z1))
+    
     return V1+V2+V3
 
 def BayesImp_mean(Y,X,Z,Ztest,kernel_params_r,kernel_params_z,noise_r,noise_z, mc_approx = False, mc_samples = 10**3, nu = 1):
