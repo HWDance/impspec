@@ -130,7 +130,9 @@ class causalKLGP:
         self.kernel_V.dist.loc = V.mean(0)
         
         n = len(Y)
+        Y = Y.reshape(n,1)
         ntest = len(doA)
+        
         U = self.kernel_V.dist.sample((features,)).detach()
         K_uu = self.kernel_V.get_gram_base(U,U).detach()
         K_vu = self.kernel_V.get_gram_base(V,U).detach()
@@ -168,11 +170,11 @@ class causalKLGP:
         # Getting samples of f
         #F_s = MultivariateNormal(mu_f,C_f).sample((samples,)) # nsamples x ntest
         epsilon = Normal(torch.zeros(features),torch.ones(features)).sample((samples,))
-        F_s = mu_f[None]+epsilon @ C_fhalf.T
+        F_s = mu_f.T+epsilon @ C_fhalf.T
         Phi_vs = Normal(mu_l,C_l).sample((samples,)) # nsamples x nfeat # ntest
         Phi_vs_noise = Normal(mu_l,C_l_noise).sample((samples,)) # nsamples x nfeat # ntest
-        EYdoA_sample = (F_s[...,None]*Phi_vs).sum(1)
-        YdoA_sample = (F_s[...,None]*Phi_vs_noise).sum(1) + Normal(0,torch.exp(self.noise_Y)**0.5).sample((samples,ntest))
+        EYdoA_sample = (F_s[...,None]*Phi_vs).sum(1) # nsamples x ntest
+        YdoA_sample = (F_s[...,None]*Phi_vs_noise).sum(1) + Normal(0,torch.exp(self.noise_Y)**0.5).sample((samples,ntest)) # nsamples x ntest
 
         return EYdoA_sample, YdoA_sample
 
@@ -218,11 +220,11 @@ class causalKLGP:
                 EYdoA_sample, YdoA_sample = self.nystrom_sample(Ytr,Vtr,Atr,Acal,reg, nystrom_features, nystrom_samples, nulist[k])
                 upper_quantiles = 1-(1-levels)/2
                 lower_quantiles = (1-levels)/2
-                u = (upper_quantiles*samples).int()
-                l = (lower_quantiles*samples).int()
+                u = (upper_quantiles*(nystrom_samples-1)).int()
+                l = (lower_quantiles*(nystrom_samples-1)).int()
                 Y_u = YdoA_sample.sort(0)[0][u]
                 Y_l = YdoA_sample.sort(0)[0][l]
-                post_levels = ((Y_u>=Ycal)*(Y_l<=Ycal)).float().mean(1)
+                post_levels = ((Y_u>=Ycal[:,0])*(Y_l<=Ycal[:,0])).float().mean(1)
                 Post_levels.append(post_levels)
                 Calibration_losses[k] = (post_levels-levels[:,None].T).abs().mean()     
         
