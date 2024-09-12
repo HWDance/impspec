@@ -114,8 +114,7 @@ class NuclearKernel:
 
     def get_gram_gaussian(self, X: torch.tensor, Z: torch.tensor):
         """Returns exact gram matrix of Gaussian nuclear dominant kernel kernel"""
-        assert(self.dist.loc.abs().max() == 0)
-    
+        assert(self.dist.loc.abs().max() == 0)    
         d = X.size()[1]
         M = torch.diag(1/self.base_kernel.lengthscale**2)
         A = 2*M+torch.eye(d)/self.dist.scale**2
