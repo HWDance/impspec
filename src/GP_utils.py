@@ -4,7 +4,7 @@ from torch.distributions import MultivariateNormal, Normal
 def GPML(Y, X, kernel_X, noise_Y,reg = 1e-4):
     n = len(Y)
     K_xx = kernel_X.get_gram(X,X)
-    return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y)
+    return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y).mean()
 
 def GPfeatureML(Y, X, kernel_Y, kernel_X, noise_feat, reg = 1e-4):
     n = len(Y)
@@ -28,6 +28,12 @@ def GPmercerML(Y, X, kernel_Y, kernel_X, noise_feat,reg = 1e-4):
             )
     return ml
 
+def GPpostmean(Y, X, Xtest, kernel, noise, reg = 1e-4):
+    n,m = len(X),len(Xtest)
+    K_xx = kernel.get_gram(X,X)
+    K_xxtest = kernel.get_gram(X,Xtest)
+    K_x = K_xx + (noise+reg)*torch.eye(n)
+    return  K_xxtest.T @ torch.linalg.solve(K_x, Y)
 
 def GPpostvar(X, Xtest, kernel, noise, reg = 1e-4, latent = False):
     n,m = len(X),len(Xtest)
@@ -36,7 +42,7 @@ def GPpostvar(X, Xtest, kernel, noise, reg = 1e-4, latent = False):
     K_xtestxtest= kernel.get_gram(Xtest,Xtest)
     K_x = K_xx + (noise+reg)*torch.eye(n)
     return K_xtestxtest - K_xxtest.T @ torch.linalg.solve(K_x, K_xxtest)+(noise*torch.eye(m))*(not latent)
-
+    
 def GP_cal(Y, mean, var, levels):
     """
     Y:

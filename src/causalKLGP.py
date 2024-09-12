@@ -20,12 +20,12 @@ class causalKLGP:
                                                  samples)
         self.noise_Y = torch.tensor(-2.0, requires_grad = True).float()
         
-        self.kernel_A = Kernel_A(lengthscale = torch.ones(p),
+        self.kernel_A = Kernel_A(lengthscale =torch.tensor([p**0.5*1.0]).repeat(p).requires_grad_(False),
                                   scale = torch.tensor([1.0], requires_grad = True))
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
 
     """Will eventually be specific to front and back door"""
-    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True):
+    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = False):
     
         """Training P(Y|V)"""
         n,d = V.size()
@@ -66,6 +66,9 @@ class causalKLGP:
         params_list = [self.kernel_A.hypers,
                                       self.kernel_A.scale,
                                       self.noise_feat]
+        if train_feature_lengthscale:
+            self.kernel_A.lengthscale = self.kernel_A.lengthscale.requires_grad_(True)
+            params_list.append(self.kernel_A.lengthscale)            
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
         
@@ -192,7 +195,7 @@ class causalKLGP:
 
         return EYdoA_sample, YdoA_sample
 
-    def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4, train_cal_split=0.5, levels = [], seed=0, 
+    def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, 
                   nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1):
         """
         train_args = (niter,learn_rate,reg)
@@ -210,7 +213,8 @@ class causalKLGP:
         Ycal,Vcal,Acal = Y[shuffle][ntr:],V[shuffle][ntr:],A[shuffle][ntr:]
 
         # Training
-        self.train(Ytr, Atr, Vtr, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False)
+        self.train(Ytr, Atr, Vtr, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False,
+                  train_feature_lengthscale = train_feature_lengthscale)
         
         # Getting posterior mean
         mean = self.post_mean(Ytr, Atr, Vtr, Acal, reg = reg).detach()
