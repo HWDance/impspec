@@ -25,7 +25,7 @@ class BayesIMP:
             self.kernel_V.get_gram = self.kernel_V.get_gram_approx
         self.noise_Y = torch.tensor(-2.0, requires_grad = True).float()
 
-        self.kernel_A = Kernel_A(lengthscale = torch.ones(p),
+        self.kernel_A = Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
                                   scale = torch.tensor([1.0], requires_grad = True))
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
 
@@ -73,10 +73,11 @@ class BayesIMP:
         n,p = A.size()
 
         # Getting lengthscale
-        self.kernel_A.lengthscale = median_heuristic(A)
+        #self.kernel_A.lengthscale = median_heuristic(A)
         
         # Optimiser set up
         params_list = [self.kernel_A.hypers,
+                       self.kernel_A.lengthscale,
                         self.kernel_A.scale,
                         self.noise_feat]
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)

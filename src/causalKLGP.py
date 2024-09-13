@@ -196,7 +196,7 @@ class causalKLGP:
         return EYdoA_sample, YdoA_sample
 
     def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, 
-                  nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1):
+                  nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1, train_calibration_model = False):
         """
         train_args = (niter,learn_rate,reg)
 
@@ -212,12 +212,19 @@ class causalKLGP:
         Ytr,Vtr,Atr = Y[shuffle][:ntr],V[shuffle][:ntr],A[shuffle][:ntr]
         Ycal,Vcal,Acal = Y[shuffle][ntr:],V[shuffle][ntr:],A[shuffle][ntr:]
 
-        # Training
+        # Optionally train calibration model and get cal_f
+        if calibrate_latent:
+            if train_calibration_model:
+                self.train(Ycal, Acal, Vcal, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False, 
+                           train_feature_lengthscale = train_feature_lengthscale)
+            Ycal = self.post_mean(Ycal, Acal, Vcal, Acal, reg = reg).detach()
+
+
+        # Training model and getting post mean
         self.train(Ytr, Atr, Vtr, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False,
                   train_feature_lengthscale = train_feature_lengthscale)
-        
-        # Getting posterior mean
         mean = self.post_mean(Ytr, Atr, Vtr, Acal, reg = reg).detach()
+
         
         # Iterating over hyperlist
         Calibration_losses= torch.zeros(len(nulist))
@@ -229,7 +236,6 @@ class causalKLGP:
 
                 if calibrate_latent:
                     var = self.post_var(Ytr, Atr, Vtr, Acal, reg = reg, latent = True, nu = nulist[k]).detach().diag()[:,None]
-                    Ycal = self.post_mean(Ycal, Acal, Vcal, Acal, reg = reg).detach()
                     post_levels = GP_cal(Ycal, mean, var, levels[:,None])
                 else:
                     var_noise = self.post_var(Ytr, Atr, Vtr, Acal, reg = reg, latent = False, nu = nulist[k]).detach().diag()[:,None]
@@ -243,7 +249,6 @@ class causalKLGP:
                 if calibrate_latent:
                     Y_u = EYdoA_sample.sort(0)[0][u]
                     Y_l = EYdoA_sample.sort(0)[0][l]
-                    Ycal = self.post_mean(Ycal, Acal, Vcal, Acal, reg = reg).detach()
                 else:
                     Y_u = YdoA_sample.sort(0)[0][u]
                     Y_l = YdoA_sample.sort(0)[0][l]

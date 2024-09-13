@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import Normal
+from torch.distributions import Normal, StudentT, Gamma, Uniform
 from math import pi    
 
 def f_x(Z,coefs):
@@ -21,4 +21,37 @@ def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_sampl
         ET = (0.5*Ysample*torch.cos(Ysample)).mean(1) + Normal(0,sigma_t).sample((ntest,mc_samples)).mean(1)
         
     return Xtrain, Ytrain, Ttrain, Xtest, Ytest, Ttest, ET
+
+
+def PSA_VOL(samples, seed = 0):
+    torch.manual_seed(seed)
     
+    # Estimated in Kato et al (2008)
+    def get_vol(psa):
+        return 3.476 + 0.302*psa
+    r2 = 0.332**2
+
+    # Inferred from Kato et al (2008) results
+    PSA_dist = Gamma(2,0.2)
+    error_dist = StudentT(3.5,0,1)
+
+    # Sampling
+    psa = PSA_dist.sample((samples,1))
+    fvol = get_vol(psa)
+    vol = (fvol + error_dist.sample((samples,1))*(fvol.var()**0.5*(1-r2)/r2)**0.5).abs()
+
+    return psa, fvol, vol
+
+def STATIN_PSA(samples, seed = 0, gamma = False):
+    torch.manual_seed(seed)
+
+    age = Uniform(15,75).sample((samples,))
+    bmi = Normal(27-0.01*age, 0.7**0.5).sample()
+    aspirin = torch.sigmoid(-8 + 0.1*age + 0.03*bmi)
+    statin = torch.sigmoid(-13 + 0.1*age + 0.2*bmi)
+    cancer = torch.sigmoid(2.2 - 0.05*age + 0.01*bmi - 0.04*statin + 0.02*aspirin)
+    if gamma:
+        psa = Gamma(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5,1).sample()
+    else:
+        psa = Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5, 0.4**0.5).sample()
+    return age, bmi, aspirin, statin, cancer, psa
