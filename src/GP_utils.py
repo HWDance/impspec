@@ -1,10 +1,12 @@
 import torch
 from torch.distributions import MultivariateNormal, Normal
 
-def GPML(Y, X, kernel_X, noise_Y,reg = 1e-4):
-    n = len(Y)
+def GPML(Y, X, kernel_X, noise_Y,reg = 1e-4, force_PD = False):
+    n = len(X)
     K_xx = kernel_X.get_gram(X,X)
-    return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y).mean()
+    if force_PD:
+        K_xx = (K_xx+K_xx.T)/2
+    return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y).sum()
 
 def GPfeatureML(Y, X, kernel_Y, kernel_X, noise_feat, reg = 1e-4):
     n = len(Y)

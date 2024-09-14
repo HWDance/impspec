@@ -8,30 +8,44 @@ class baselineGP:
     causalKLGP method for estimating posterior moments of average causal effects
     """
 
-    def __init__(self,Kernel_A, Kernel_V, Kernel_Z, dim_A, dim_V, samples):
+    def __init__(self,Kernel_A, Kernel_V, Kernel_Z, dim_A, dim_V, single_kernel = True):
 
         d,p = dim_V, dim_A
-        
-        # Initialising hypers        
+
+        self.single_kernel = single_kernel
+
         self.kernel_V = Kernel_V(lengthscale = torch.tensor([d**0.5*1.0]).repeat(d).requires_grad_(True), 
-                                scale = torch.tensor([1.0], requires_grad = True))
+                                    scale = torch.tensor([1.0], requires_grad = True))
         self.noise_Y = torch.tensor(-2.0, requires_grad = True).float()
+
+        self.kernel_A = []
+        self.noise_feat = []
         
-        self.kernel_A = Kernel_A(lengthscale = torch.ones(p),
+        # Initialising hypers  
+        if self.single_kernel:
+            kernel_a = Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
                                   scale = torch.tensor([1.0], requires_grad = True))
-        self.noise_feat = torch.tensor(-2.0, requires_grad = True)
+            noise = (-2.0*torch.ones(1)).requires_grad_(True)
+            self.kernel_A.extend([kernel_a]*d)
+            self.noise_feat.extend([noise]*d)  
+        else:
+            for j in range(d):
+                self.kernel_A.append(Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
+                                      scale = torch.tensor([1.0], requires_grad = True)))
+                self.noise_feat.append((-2.0*torch.ones(1)).requires_grad_(True))
+            
 
     """Will eventually be specific to front and back door"""
-    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True):
+    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True, force_PD = False, median_heuristic_A = False):
     
         """Training P(Y|V)"""
         n,d = V.size()
         Y = Y.reshape(n,)
         
         # Optimiser set up
-        params_list = [self.kernel_V.base_kernel.lengthscale,
-                                      self.kernel_V.base_kernel.scale,
-                                      self.kernel_V.base_kernel.hypers,
+        params_list = [self.kernel_V.lengthscale,
+                                      self.kernel_V.scale,
+                                      self.kernel_V.hypers,
                                       self.noise_Y]
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
@@ -39,7 +53,7 @@ class baselineGP:
         # Updates
         for i in range(niter):
             optimizer.zero_grad()
-            loss = -GPML(Y, V, self.kernel_V.base_kernel, self.noise_Y.exp())
+            loss = -GPML(Y, V, self.kernel_V, self.noise_Y.exp(), force_PD = force_PD)
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -55,19 +69,25 @@ class baselineGP:
         Training P(V|A)
         """
         n,p = A.size()
-
         # Optimiser set up
-        params_list = [self.kernel_A.lengthscale,
-                       self.kernel_A.hypers,
-                      self.kernel_A.scale,
-                      self.noise_feat]
+        params_list = []
+        for j in range(d):
+            params_list.extend([self.kernel_A[j].hypers,
+                      self.kernel_A[j].scale,
+                      self.noise_feat[j]])
+            if median_heuristic_A:
+                self.kernel_A[j].lengthscale = median_heuristic(A)
+            else:
+                params_list.append(self.kernel_A[j].lengthscale)
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
         
         # Updates
         for i in range(niter):
             optimizer.zero_grad()
-            loss =  -GPML(V, A, self.kernel_A, self.noise_feat.exp())
+            loss = 0
+            for j in range(d):
+                loss +=  -GPML(V[:,j], A, self.kernel_A[j], self.noise_feat[j].exp(), force_PD = force_PD)
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -80,34 +100,66 @@ class baselineGP:
                 param = param.requires_grad_(False)
             
 
-    def marginal_post_sample(self,Y,V,A,doA, reg = 1e-4, samples = 10**3, latent = False):
+    def marginal_post_sample(self,Y,V,A,doA, reg = 1e-4, error_samples = 10**2, gp_samples = 10**2):
 
         n, ntest = len(Y), len(doA)
+        d, p = V.size()[1], A.size()[1]
+        Y = Y.reshape(n,1)
         
         # Base Gaussian samples
-        d, p = V.size()[1], A.size()[1]
-        epsilon_V = Normal(0,1).sample((ntest, samples, d))
+        U_v1 = Normal(0,1).sample((ntest, error_samples, d))*torch.tensor(self.noise_feat).exp()**0.5
+        U_v2 = Normal(0,1).sample((ntest, error_samples, d))*torch.tensor(self.noise_feat).exp()**0.5
+        U_y = Normal(0,1).sample((ntest, 1))*self.noise_Y.exp()**0.5
         
-        # Moments of p(V|A)
-        VdoA_mu = GPpostmean(V, A, doA, self.kernel_A, self.noise_feat.exp(), reg)
-        VdoA_var = GPpostvar(V, A, doA, self.kernel_A, self.noise_feat.exp(), reg, latent)
+        # Posterior moments of E[V|A]
+        VdoA_mu = torch.zeros((ntest,d))
+        VdoA_var = torch.zeros((ntest,ntest,d))
+        for j in range(d):
+            VdoA_mu[...,j] =  GPpostmean(V[:,j], A, doA, self.kernel_A[j], self.noise_feat[j].exp(), reg) # ntest x 1 (d rows of this)
+            VdoA_var[...,j] = GPpostvar(A, doA, self.kernel_A[j], self.noise_feat[j].exp(), reg, latent = True) # ntest x ntest (d rows of this)
 
-        # Sampling from p(V|A) (marginally)
-        VdoA = VdoA_mu[:,None] + VdoA_var.diag().sqrt()[:,None,None]*epsilon_V # ntest x samples x d
+        # Sampling from E[V|A] (marginally)
+        EVdoA_samples = torch.zeros((ntest,gp_samples,d))
+        for j in range(d):
+            epsilon_V = Normal(0,1).sample((ntest, gp_samples)) 
+            EVdoA_samples[...,j] = VdoA_mu[:,j:j+1] + VdoA_var[...,j].diag().sqrt()[:,None]*epsilon_V  # ntest x gp_samples (d rows of this)
 
-        # COME BACK TO DO WITH BATCHING
-        YdoA = torch.zeros((ntest, samples))
-        for s in range(samples):
+        EYdoA_samples = torch.zeros((ntest, gp_samples))
+
+        # Now iteratively get moments of E[Y|do(a), f, g] | g  ~ N(m_g(a), v_g(a))
+        for i in range(ntest):
+
+            # (i) Computing E[k(g(a)+e, g'(a) + e')|g=g'= hat g]
+            g_a = EVdoA_samples[i] # gp_samples x d
+            u_v1 = U_v1[i] # error_samples x d
+            u_v2 = U_v2[i] # error_samples x d
+
+            vdoa1 = g_a[:,None] + u_v1[None] # gp_samples x error_samples x d
+            vdoa2 = g_a[:,None] + u_v2[None] # gp_samples x error_samples x d
+
+            vdoa1 = vdoa1.reshape(gp_samples*error_samples, 1, d)
+            vdoa2 = vdoa2.reshape(gp_samples*error_samples, 1, d)
+
+            Ek_vdoa1_vdoa2 = self.kernel_V.get_gram(vdoa1,vdoa2).reshape(gp_samples, error_samples).mean(1) # gp_samples x 0
+
+
+            # (ii) Computing E[k(g(a)+e,V_tr)]
+            vdoa1 = vdoa1[:,0] # gp_samples*error_samples x d
+            Ek_vdoa1_V = self.kernel_V.get_gram(vdoa1, V) # gp_samples*error_samples x n
+            Ek_vdoa1_V = Ek_vdoa1_V.reshape(gp_samples, error_samples, n).mean(1) # gp_samples x n
+
+            # Computing moments
+            K_v =self.kernel_V.get_gram(V,V)+torch.eye(n)*self.noise_Y.exp()
+            m_ga = Ek_vdoa1_V @  torch.linalg.solve(K_v,Y) # gp_samples x 1
+            v_ga = (Ek_vdoa1_vdoa2 - (Ek_vdoa1_V @ torch.linalg.solve(K_v, Ek_vdoa1_V.T)).diag()).abs() # gp_samples x 1
+                
+            # Sampling
+            epsilon_Y = Normal(0,1).sample((gp_samples,))
             
-            # Moments of p(Y|VdoA)
-            YdoA_mu = GPpostmean(Y, V, VdoA[:,s], self.kernel_V, self.noise_Y.exp(), reg) # ntest x 1
-            YdoA_var = GPpostvar(Y, V, VdoA[:,s], self.kernel_V, self.noise_Y.exp(), reg, latent)  # ntest x ntest
-        
-            # Sampling from p(Y|VdoA) (marginally)
-            epsilon_Y = Normal(0,1).sample((ntest, 1))
-            YdoA[:,s] = YdoA_mu + YdoA_var.diag().sqrt()[:,None]*epsilon_Y
+            EYdoA_samples[i] = m_ga[:,0] + v_ga**0.5*epsilon_Y
+            
 
-        return YdoA
+        return EYdoA_samples, EVdoA_samples
 
 
 
