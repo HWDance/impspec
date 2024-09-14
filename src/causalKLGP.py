@@ -141,21 +141,23 @@ class causalKLGP:
 
     def nystrom_sample(self,Y,V,A,doA, reg = 1e-4, features = 100, samples = 10**3, nu = 1):
 
+        # Set up
+        n = len(Y)
+        Y = Y.reshape(n,1)
+        ntest = len(doA)
         
         # Updating nuclear dominant kernel
         self.kernel_V.dist.scale = nu*V.var(0)**0.5
         self.kernel_V.dist.loc = V.mean(0)
         
-        n = len(Y)
-        Y = Y.reshape(n,1)
-        ntest = len(doA)
-        
+        # Getting gram matrices
         U = self.kernel_V.dist.sample((features,)).detach()
         K_uu = self.kernel_V.get_gram_base(U,U).detach()
         K_vu = self.kernel_V.get_gram_base(V,U).detach()
         K_vv = self.kernel_V.get_gram_base(V,V).detach()
         K_aa = self.kernel_A.get_gram(A,A).detach()
         
+        # Getting eignefunctions and eigenvalues
         eigs,vecs = torch.linalg.eig(K_uu/samples)
         eigs,vecs = eigs.real.abs(), vecs.real
         
@@ -195,8 +197,8 @@ class causalKLGP:
 
         return EYdoA_sample, YdoA_sample
 
-    def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, 
-                  nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1, train_calibration_model = False):
+
+    def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1, train_calibration_model = False):
         """
         train_args = (niter,learn_rate,reg)
 

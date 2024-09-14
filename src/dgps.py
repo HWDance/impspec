@@ -23,7 +23,23 @@ def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_sampl
     return Xtrain, Ytrain, Ttrain, Xtest, Ytest, Ttest, ET
 
 
-def PSA_VOL(samples, seed = 0):
+def STATIN_PSA(samples, seed = 0, gamma = False):
+    torch.manual_seed(seed)
+
+    age = Uniform(15,75).sample((samples,))
+    bmi = Normal(27-0.01*age, 0.7**0.5).sample()
+    aspirin = torch.sigmoid(-8 + 0.1*age + 0.03*bmi)
+    statin = torch.sigmoid(-13 + 0.1*age + 0.2*bmi)
+    cancer = torch.sigmoid(2.2 - 0.05*age + 0.01*bmi - 0.04*statin + 0.02*aspirin)
+    if gamma:
+        psa = Gamma(100, 20/(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer)).sample()
+    else:
+        psa = 5*Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5).sample()
+    return age, bmi, aspirin, statin, cancer, psa
+
+
+def PSA_VOL(samples, seed = 0, psa = []):
+    
     torch.manual_seed(seed)
     
     # Estimated in Kato et al (2008)
@@ -36,22 +52,9 @@ def PSA_VOL(samples, seed = 0):
     error_dist = StudentT(3.5,0,1)
 
     # Sampling
-    psa = PSA_dist.sample((samples,1))
+    if psa == []:
+        psa = PSA_dist.sample((samples,))
     fvol = get_vol(psa)
-    vol = (fvol + error_dist.sample((samples,1))*(fvol.var()**0.5*(1-r2)/r2)**0.5).abs()
+    vol = (fvol + error_dist.sample((samples,))*(fvol.var()**0.5*(1-r2)/r2)**0.5).abs()
 
     return psa, fvol, vol
-
-def STATIN_PSA(samples, seed = 0, gamma = False):
-    torch.manual_seed(seed)
-
-    age = Uniform(15,75).sample((samples,))
-    bmi = Normal(27-0.01*age, 0.7**0.5).sample()
-    aspirin = torch.sigmoid(-8 + 0.1*age + 0.03*bmi)
-    statin = torch.sigmoid(-13 + 0.1*age + 0.2*bmi)
-    cancer = torch.sigmoid(2.2 - 0.05*age + 0.01*bmi - 0.04*statin + 0.02*aspirin)
-    if gamma:
-        psa = Gamma(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5,1).sample()
-    else:
-        psa = Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5, 0.4**0.5).sample()
-    return age, bmi, aspirin, statin, cancer, psa

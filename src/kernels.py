@@ -130,6 +130,28 @@ class NuclearKernel:
         """Returns gram matrix of base kernel"""
         return self.base_kernel.get_gram(X,Z)
 
+class ProductKernel:
+    """
+    Parameters
+    ----------
+    kernels:
+        list of Kernel() objects
+    """
+    def __init__(self, kernels):
+        self.kernels = kernels
+
+    def get_gram(self, X, Z):
+        """ X, Z as lists of length len(kernels), 
+            each element as N x P_i """
+        assert (len(X) == len(Z))
+
+        K = torch.ones((len(X[:,0]),len(Z[:,0])))
+
+        for i in range(len(X)):
+            K *= self.kernels[i].get_gram(X[i],Z[i])
+
+        return K
+            
 
 
 
