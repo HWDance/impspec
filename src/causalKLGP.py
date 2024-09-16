@@ -25,7 +25,7 @@ class causalKLGP:
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
 
     """Will eventually be specific to front and back door"""
-    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = False):
+    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = True):
     
         """Training P(Y|V)"""
         n,d = V.size()

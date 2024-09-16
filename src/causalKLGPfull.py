@@ -36,7 +36,7 @@ class causalKLGP:
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
         
 
-    def train(self, Y, V, W=[], Z=[], niter = 500, learn_rate = 0.1, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = False):
+    def train(self, Y, V, W=[], Z=[], niter = 500, learn_rate = 0.1, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = True):
     
         """Training P(Y|V,W)"""
         n,d = V.size()

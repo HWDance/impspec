@@ -8,6 +8,28 @@ def f_x(Z,coefs):
 def f_y(X,coefs):
     return (torch.sin(X)*coefs).T.sum(0)
 
+def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = 0):
+
+    torch.manual_seed(seed)
+    
+    coefs_v = 10*torch.linspace(1,4,d).view(1,d)
+    coefs_y = 1/torch.linspace(1,d,d).view(d,)
+    
+    Z = Uniform(0,1).sample((n,1))
+    doZ = torch.linspace(doZlower,doZupper,ntest).view(ntest,1)
+    fv = f_x(Z,coefs_v)
+    noise_distribution = Normal(0,(noise_variance*fv.var(0))**0.5)
+    V =  fv+noise_distribution.sample((n,))
+    fy = f_y(V,coefs_y)
+    Y = Normal(fy,(noise_variance*fy.var())**0.5).sample()
+    
+    # Grid-points to approximate true E[Y|do(Z)]
+    VdoZ = (f_x(doZ,coefs_v)).T[:,:,None] @ torch.ones(mc_samples_EYdoZ).view(1,mc_samples_EYdoZ) + noise_distribution.sample((mc_samples_EYdoZ,ntest)).T
+    EYdoZ = (f_y(VdoZ.T,coefs_y)).mean(1).view(ntest,1)
+    YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample()
+
+    return Z, V, Y, doZ, YdoZ, EYdoZ
+
 def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_samples = 10**3):
     X = Normal(0,sigma_x).sample((n+ntest,1))
     Y = X*torch.cos(pi*X) + Normal(0,sigma_y).sample((n+ntest,1))
