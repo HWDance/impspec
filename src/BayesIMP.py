@@ -98,7 +98,7 @@ class BayesIMP:
             param = param.requires_grad_(False)
 
     """Compute E[E[Y|do(A)]] in A -> V -> Y """
-    def post_mean(self, Y, A, V, doA, reg = 1e-4, samples = 10**3):
+    def post_mean(self, Y, A, V, doA, reg = 1e-4, samples = 10**5):
         if not self.exact:
             self.kernel_V.samples = samples
 
@@ -119,7 +119,7 @@ class BayesIMP:
         return  A_a @ R_vv @ alpha_y
         
     """Compute Var[E[Y|do(A)]] in A -> V -> Y """
-    def post_var(self, Y, A, V, doA, reg = 1e-4, latent = True, samples = 10**3):
+    def post_var(self, Y, A, V, doA, reg = 1e-4, latent = True, samples = 10**5):
         if not self.exact:
             self.kernel_V.samples = samples
 
@@ -147,4 +147,4 @@ class BayesIMP:
         V2 = alpha_y.T @ R_vv @ KinvR @ KinvR @ alpha_y * kpost_atest_approx
         V3 = torch.trace(torch.linalg.solve(K_vv+torch.eye(n)*reg, R_vv_bar @ KinvR)) * kpost_atest_approx
         
-        return V1+V2+V3
+        return (V1+V2+V3).diag()[:,None]

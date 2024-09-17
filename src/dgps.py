@@ -26,7 +26,7 @@ def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_sample
     # Grid-points to approximate true E[Y|do(Z)]
     VdoZ = (f_x(doZ,coefs_v)).T[:,:,None] @ torch.ones(mc_samples_EYdoZ).view(1,mc_samples_EYdoZ) + noise_distribution.sample((mc_samples_EYdoZ,ntest)).T
     EYdoZ = (f_y(VdoZ.T,coefs_y)).mean(1).view(ntest,1)
-    YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample()
+    YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample().view(ntest,1)
 
     return Z, V, Y, doZ, YdoZ, EYdoZ
 

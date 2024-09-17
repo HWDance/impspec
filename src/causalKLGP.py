@@ -137,7 +137,7 @@ class causalKLGP:
         V2 = kpost_atest*(K_vv[0,0] - torch.trace(B))
         V3 = k_atest @ KainvKvv @ (torch.eye(n) - DDKvv) @ alpha_a+torch.exp(self.noise_Y)*(not latent)*torch.eye(len(doA))
         
-        return V1+V2+V3
+        return (V1+V2+V3).diag()[:,None]
 
     def nystrom_sample(self,Y,V,A,doA, reg = 1e-4, features = 100, samples = 10**3, nu = 1):
 
@@ -199,11 +199,6 @@ class causalKLGP:
 
 
     def calibrate(self,Y, V, A, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1, train_calibration_model = False):
-        """
-        train_args = (niter,learn_rate,reg)
-
-        Returns: nu hyperparameter for computing posterior
-        """
 
         # Getting data splits
         n = len(Y)
