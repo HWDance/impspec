@@ -72,10 +72,7 @@ class BayesIMP:
         """
         n,p = A.size()
 
-        # Getting lengthscale
-        #self.kernel_A.lengthscale = median_heuristic(A)
-        
-        # Optimiser set up
+       # Optimiser set up
         params_list = [self.kernel_A.hypers,
                        self.kernel_A.lengthscale,
                         self.kernel_A.scale,
@@ -99,52 +96,131 @@ class BayesIMP:
 
     """Compute E[E[Y|do(A)]] in A -> V -> Y """
     def post_mean(self, Y, A, V, doA, reg = 1e-4, samples = 10**5):
+        
         if not self.exact:
             self.kernel_V.samples = samples
 
         n = len(Y)
         Y = Y.reshape(n,1)
-        
-        # getting kernel matrices
-        R_vv,K_aa,k_atest = (self.kernel_V.get_gram(V,V),
-                             self.kernel_A.get_gram(A,A),
-                             self.kernel_A.get_gram(doA, A))
-        R_v = R_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
-        K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n)
 
-        # Getting components
-        A_a = torch.linalg.solve(K_a,k_atest.T).T
-        alpha_y = torch.linalg.solve(R_v,Y)
+         # one dataset case
+        if type(V) != list
         
-        return  A_a @ R_vv @ alpha_y
+            # getting kernel matrices
+            R_vv,K_aa,k_atest = (self.kernel_V.get_gram(V,V),
+                                 self.kernel_A.get_gram(A,A),
+                                 self.kernel_A.get_gram(doA,A))
+            R_v = R_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
+            K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n)
+    
+            # Getting components
+            A_a = torch.linalg.solve(K_a,k_atest.T).T
+            alpha_y = torch.linalg.solve(R_v,Y)
+            
+            return  A_a @ R_vv @ alpha_y
+
+        # two dataset case
+        else:
+            Vall = torch.row_stack((V[0],V[1]))
+            n1,n0 = len(Y),len(A)
+            
+            # getting kernel matrices
+            R_vv1,R_v1v1, K_vv, K_vv0 = (self.kernel_V.get_gram(Vall,V[1]),
+                                         self.kernel_V.get_gram(V[1],V[1]),
+                                         self.kernel_V.get_gram_base(Vall,Vall),
+                                         self.kernel_V.get_gram_base(Vall,V[0]))
+            K_aa,k_atest = (self.kernel_A.get_gram(A,A),
+                                 self.kernel_A.get_gram(doA,A))
+            R_v1 = R_v1v1+(self.noise_Y.exp()+reg)*torch.eye(n1)
+            K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n0)
+    
+            # Getting components
+            E_a = torch.linalg.solve(K_a,k_atest.T)
+            alpha_y = torch.linalg.solve(R_v1,Y)
+            
+            return  E_a.T @ K_vv0.T @ torch.linalg.solve(K_vv, R_v0v1) @ alpha_y
         
     """Compute Var[E[Y|do(A)]] in A -> V -> Y """
     def post_var(self, Y, A, V, doA, reg = 1e-4, latent = True, samples = 10**5):
+        
         if not self.exact:
-            self.kernel_V.samples = samples
-
+                self.kernel_V.samples = samples
+        
         n = len(Y)
         Y = Y.reshape(n,1)
+            
+        # one dataset case
+        if type(V) != list:
+            
+            # getting kernel matrices
+            R_vv,K_vv,K_aa,k_atest, k_atestatest = (self.kernel_V.get_gram(V,V),
+                                     self.kernel_V.get_gram_base(V,V),
+                                     self.kernel_A.get_gram(A,A),
+                                     self.kernel_A.get_gram(doA, A),
+                                     self.kernel_A.get_gram(doA, doA))
+            R_v = R_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
+            K_v = K_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
+            K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n)
+            R_vv_bar = R_vv - R_vv @ torch.linalg.solve(R_v,R_vv)+ (not latent)*self.noise_Y.exp()*torch.eye(n)
+            kpost_atest = (k_atestatest - k_atest @ torch.linalg.solve(K_a,k_atest.T))+ (not latent)*self.noise_feat.exp()*torch.eye(len(doA))
+            
+            # computing matrix vector products
+            alpha_a = torch.linalg.solve(K_a,k_atest.T)
+            alpha_y = torch.linalg.solve(K_v,Y)
+            KinvR = torch.linalg.solve(K_vv+torch.eye(n)*reg,R_vv)
+            
+            V1 = alpha_a.T @ R_vv_bar @ alpha_a
+            V2 = alpha_y.T @ R_vv @ KinvR @ KinvR @ alpha_y * kpost_atest
+            V3 = torch.trace(torch.linalg.solve(K_vv+torch.eye(n)*reg, R_vv_bar @ KinvR)) * kpost_atest
+            
+            return (V1+V2+V3).diag()[:,None]
+
+        # two datasets case
+        else:
+            Vall = torch.row_stack((V[0],V[1]))
+            n1,n0 = len(Y),len(A)
+            
+            # getting kernel matrices
+            R_v1v0, R_v0v0, R_v1v1, R_vv1, Rvv0, R_vv = (self.kernel_V.get_gram(V[1],V[0]),
+                                    self.kernel_V.get_gram(V[0],V[0]),
+                                    self.kernel_V.get_gram(V[1],V[1]),
+                                    self.kernel_V.get_gram(Vall,V[1])
+                                    self.kernel_V.get_gram(Vall,V[0]),
+                                    self.kernel_V.get_gram(Vall,Vall))
+            
+            K_v0v0, K_v1v1, K_vv1, Kvv0, K_vv = (self.kernel_V.get_gram_base(V[0],V[0]),
+                                    self.kernel_V.get_gram_base(V[1],V[1]),
+                                    self.kernel_V.get_gram_base(Vall,V[1])
+                                    self.kernel_V.get_gram_base(Vall,V[0]),
+                                    self.kernel_V.get_gram_base(Vall,Vall))
+            
+            K_aa, k_atest, k_atestatest = (self.kernel_A.get_gram(A,A),
+                                     self.kernel_A.get_gram(doA, A),
+                                     self.kernel_A.get_gram(doA, doA))
+            
+            R_v1 = R_v1v1+(self.noise_Y.exp()+reg)*torch.eye(n1)
+            K_v1 = K_v1v1+(self.noise_Y.exp()+reg)*torch.eye(n1)
+            K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n0)
+            R_vv_bar = R_vv - R_vv1 @ torch.linalg.solve(R_v1,R_vv1.T)+ (not latent)*self.noise_Y.exp()*torch.eye(n1+n0)
+            kpost_atest = (k_atestatest - k_atest @ torch.linalg.solve(K_a,k_atest.T))+ (not latent)*self.noise_feat.exp()*torch.eye(len(doA))
+
+            E_a = torch.linalg.solve(K_a,k_atest.T)
+            F_aa = kpost_atest
+            G_aa = E_a.T @ k_atest
+
+            Theta1 = torch.linalg.solve(K_vv, R_vv0) @ torch.linalg.solve(R_v0v0, K_v0v0)
+            Theta4 = torch.linalg.solve(K_v1v1, R_v1v0) @ torch.linalg.solve(K_1,Y)
+            Theta2a = Theta4.T @ R_vv @ Theta4
+            Theta2b = Theta4.T @ R_vv0 @ torch.linalg.solve(R_v0v0,R_vv0.T) @ Theta4
+            Theta3a = torch.trace(torch.linalg.solve(K_vv, R_vv) @ torch.linalg.solve(K_vv, R_vv_bar))
+            Theta3b = torch.trace(torch.linalg.solve(K_vv,R_vv0) @ torch.linalg.solve(R_v0v0,R_vv0.T) @ torch.linalg.solve(K_vv,R_vv_bar))
+
+            V1 = E_a.T @ Theta1.T @ R_vv_bar @ Theta1 @ E_a
+            V2 = Theta2a * F_aa - Theta2b * G_aa
+            V3 = Theta3a * F_aa - Theta3b * G_aa
+
+            return (V_1 + V_2 + V_3).diag()[:,None]
+
         
-        # getting kernel matrices
-        R_vv,K_vv,K_aa,k_atest, k_atestatest = (self.kernel_V.get_gram(V,V),
-                                 self.kernel_V.get_gram_base(V,V),
-                                 self.kernel_A.get_gram(A,A),
-                                 self.kernel_A.get_gram(doA, A),
-                                 self.kernel_A.get_gram(doA, doA))
-        R_v = R_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
-        K_v = K_vv+(self.noise_Y.exp()+reg)*torch.eye(n)
-        K_a = K_aa+(self.noise_feat.exp()+reg)*torch.eye(n)
-        R_vv_bar = R_vv - R_vv @ torch.linalg.solve(R_v,R_vv)+ (not latent)*self.noise_Y.exp()*torch.eye(n)
-        kpost_atest_approx = (k_atestatest - k_atest @ torch.linalg.solve(K_a,k_atest.T))+ (not latent)*self.noise_feat.exp()*torch.eye(len(doA))
-        
-        # computing matrix vector products
-        alpha_a = torch.linalg.solve(K_a,k_atest.T)
-        alpha_y = torch.linalg.solve(K_v,Y)
-        KinvR = torch.linalg.solve(K_vv+torch.eye(n)*reg,R_vv)
-        
-        V1 = alpha_a.T @ R_vv_bar @ alpha_a
-        V2 = alpha_y.T @ R_vv @ KinvR @ KinvR @ alpha_y * kpost_atest_approx
-        V3 = torch.trace(torch.linalg.solve(K_vv+torch.eye(n)*reg, R_vv_bar @ KinvR)) * kpost_atest_approx
-        
-        return (V1+V2+V3).diag()[:,None]
+            
+            

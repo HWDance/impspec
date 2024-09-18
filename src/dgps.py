@@ -8,7 +8,7 @@ def f_x(Z,coefs):
 def f_y(X,coefs):
     return (torch.sin(X)*coefs).T.sum(0)
 
-def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = 0):
+def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = 0, draw_EYdoZ = True):
 
     torch.manual_seed(seed)
     
@@ -23,12 +23,15 @@ def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_sample
     fy = f_y(V,coefs_y)
     Y = Normal(fy,(noise_variance*fy.var())**0.5).sample()
     
-    # Grid-points to approximate true E[Y|do(Z)]
-    VdoZ = (f_x(doZ,coefs_v)).T[:,:,None] @ torch.ones(mc_samples_EYdoZ).view(1,mc_samples_EYdoZ) + noise_distribution.sample((mc_samples_EYdoZ,ntest)).T
-    EYdoZ = (f_y(VdoZ.T,coefs_y)).mean(1).view(ntest,1)
-    YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample().view(ntest,1)
-
-    return Z, V, Y, doZ, YdoZ, EYdoZ
+    if draw_EYdoZ:
+        # Grid-points to approximate true E[Y|do(Z)]
+        VdoZ = (f_x(doZ,coefs_v)).T[:,:,None] @ torch.ones(mc_samples_EYdoZ).view(1,mc_samples_EYdoZ) + noise_distribution.sample((mc_samples_EYdoZ,ntest)).T
+        EYdoZ = (f_y(VdoZ.T,coefs_y)).mean(1).view(ntest,1)
+        YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample().view(ntest,1)
+    
+        return Z, V, Y, doZ, YdoZ, EYdoZ
+    else: 
+        return Z, V, Y
 
 def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_samples = 10**3):
     X = Normal(0,sigma_x).sample((n+ntest,1))

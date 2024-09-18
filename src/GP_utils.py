@@ -20,11 +20,13 @@ def GPfeatureML(Y, X, kernel_Y, kernel_X, noise_feat, reg = 1e-4):
             )
     return ml
 
-def GPmercerML(Y, X, kernel_Y, kernel_X, noise_feat,reg = 1e-4):
+def GPmercerML(Y, X, kernel_Y, kernel_X, noise_feat,reg = 1e-4, force_PD = False):
     n = len(Y)
     K_yy = kernel_Y.get_gram_base(Y, Y)
     K_xx = kernel_X.get_gram(X, X)
     K_x = K_xx + (noise_feat+reg)*torch.eye(n)
+    if force_PD:
+        K_x = 0.5*(K_x + K_x.T)
     ml =  -(K_yy[0,0]*1/2*torch.logdet(K_x)
              +1/2*torch.trace(torch.linalg.solve(K_x, K_yy))
             )

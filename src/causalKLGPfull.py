@@ -36,12 +36,16 @@ class causalKLGP:
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
         
 
-    def train(self, Y, V, W=[], Z=[], niter = 500, learn_rate = 0.1, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = True):
-    
-        """Training P(Y|V,W)"""
-        n,d = V.size()
+    def train(self, Y, V, W=[], Z=[], niter = 500, learn_rate = 0.1, reg = 1e-4, switch_grads_off = True, train_feature_lengthscale = True, force_PD = False):
+
+        # Compatibility with data fusion case
+        if type(V) != list:
+            V = [V,V]
+        n,d = V[1].size()
         Y = Y.reshape(n,)
         
+        
+        """Training P(Y|V,W)"""        
         # Optimiser set up
         params_list = [self.kernel_V.base_kernel.lengthscale,
                                       self.kernel_V.base_kernel.scale,
@@ -49,19 +53,20 @@ class causalKLGP:
                                       self.noise_Y]
         # If including W in model (V,W) -> Y, construct product kernel to optimise
         if W !=[]:
-            WV = [W,V]
+            WV = [W,V[1]]
             params_list.extend([self.kernel_W.lengthscale,
                                       self.kernel_W.scale,
                                       self.kernel_W.hypers])
         else:
-            WV = V
+            WV = V[1]
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
     
         # Updates
         for i in range(niter):
             optimizer.zero_grad()
-            loss = -GPML(Y, WV, self.kernel_WV, torch.exp(self.noise_Y))
+            loss = -GPML(Y, WV, self.kernel_WV, torch.exp(self.noise_Y), 
+                         force_PD = force_PD)
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -95,7 +100,8 @@ class causalKLGP:
             # Updates
             for i in range(niter):
                 optimizer.zero_grad()
-                loss =  -GPmercerML(V, Z, self.kernel_V, self.kernel_Z, torch.exp(self.noise_feat))
+                loss =  -GPmercerML(V[0], Z, self.kernel_V, self.kernel_Z, torch.exp(self.noise_feat),
+                                   force_PD = force_PD)
                 Losses[i] = loss.detach()
                 loss.backward()
                 optimizer.step()
@@ -111,21 +117,24 @@ class causalKLGP:
     def post_mean(self, Y, V, W = [], Z = [], doW = [], doZ = [], reg = 1e-4):
         
         assert(doW != [] or doZ != [])
-
         
-        n = len(Y)
-        Y = Y.reshape(n,1)
+        # Constructing list of V_1,V_2 for compatibility with data fusion case
+        if type(V) != list:
+            V = [V,V]      
+        
+        n1,n0 = len(Y),len(Z)
+        Y = Y.reshape(n1,1)
         if W != []:
-            WV = [W,V]
+            WV = [W,V[1]]
         else:
-            WV = V
+            WV = V[1]
         # getting kernel matrices
         K_wvwv, K_vv,K_zz,k_ztest = (self.kernel_WV.get_gram(WV,WV),
-                                      self.kernel_V.get_gram_base(V,V),
+                                      self.kernel_V.get_gram_base(V[0],V[1]),
                                      self.kernel_Z.get_gram(Z,Z),
                                      self.kernel_Z.get_gram(Z, doZ))
-        K_wv = K_wvwv+(torch.exp(self.noise_Y)+reg)*torch.eye(n)
-        K_z = K_zz+(torch.exp(self.noise_feat)+reg)*torch.eye(n)
+        K_wv = K_wvwv+(torch.exp(self.noise_Y)+reg)*torch.eye(n1)
+        K_z = K_zz+(torch.exp(self.noise_feat)+reg)*torch.eye(n0)
 
         # Getting components
         alpha_y = torch.linalg.solve(K_wv,Y) # n x 1
@@ -137,40 +146,45 @@ class causalKLGP:
         
     """Compute Var[E[Y|(do(Z)]] in Z -> V -> Y """
     def post_var(self, Y, V, W = [], Z = [], doW = [], doZ = [], reg = 1e-4, latent = True, nu=1):
-    
-        n = len(Y)
+             
+        # Constructing list of V_1,V_2 for compatibility with data fusion case
+        if type(V) != list:
+            V = [V,V]
+            
+        n1,n0 = len(Y), len(Z)
         n_w, n_z = max(len(doW),1), len(doZ)
-        Y = Y.reshape(n,1)
+        Y = Y.reshape(n1,1)
 
         # Updating nuclear dominant kernel
-        self.kernel_V.dist.scale = nu*V.var(0)**0.5
-        self.kernel_V.dist.loc = V.mean(0)
+        self.kernel_V.dist.scale = nu*V[1].var(0)**0.5
+        self.kernel_V.dist.loc = V[1].mean(0)
 
         # getting kernel matrices
         if W != []:
-            WV = [W,V]
+            WV = [W,V[1]]
         else:
-            WV = V
-        R_vv,K_wvwv,K_vv,K_zz,k_ztest = (self.kernel_V.get_gram_approx(V,V),
+            WV = V[1]
+        R_vv,K_wvwv,K_v0v1,K_v0v0,K_zz,k_ztest = (self.kernel_V.get_gram_approx(V[1],V[1]),
                                  self.kernel_WV.get_gram(WV,WV),
-                                self.kernel_V.get_gram_base(V,V),
-                                 self.kernel_Z.get_gram(Z,Z),
+                                self.kernel_V.get_gram_base(V[0],V[1]),
+                                self.kernel_V.get_gram_base(V[0],V[0]),
+                                self.kernel_Z.get_gram(Z,Z),
                                  self.kernel_Z.get_gram(Z, doZ))
-        K_wv = K_wvwv+(torch.exp(self.noise_Y)+reg)*torch.eye(n)
-        K_z = K_zz+(torch.exp(self.noise_feat)+reg)*torch.eye(n)
+        K_wv = K_wvwv+(torch.exp(self.noise_Y)+reg)*torch.eye(n1)
+        K_z = K_zz+(torch.exp(self.noise_feat)+reg)*torch.eye(n0)
         kpost_ztest = GPpostvar(Z, doZ, self.kernel_Z, torch.exp(self.noise_feat), latent = latent).diag() # ntest x 0
         if W != []:
             k_wtest = self.kernel_W.get_gram(W,doW)
             kwtestwtest = self.kernel_W.get_gram(doW,doW).diag()
         else:
-            k_wtest = torch.ones((n,1))
+            k_wtest = torch.ones((n1,1))
             kwtestwtest = torch.ones((1,1))
             
         # Getting components
         alpha_y = torch.linalg.solve(K_wv,Y) # n x 1
         beta_z = torch.linalg.solve(K_z,k_ztest) # n x n_z
-        bzKvv = beta_z.T @ K_vv # n_z x n
-        bzKvvbz = (bzKvv @ beta_z).diag() # n_z x 0
+        bzKvv = beta_z.T @ K_v0v1 # n_z x n
+        bzKvvbz = (beta_z @ K_v0v0 @ beta_z).diag() # n_z x 0
             
 
         # Getting variance terms by looping over w
@@ -182,7 +196,7 @@ class causalKLGP:
         for w in range(n_w):
             
             # Getting V1
-            alpha_a = alpha_y*k_wtest[:,w].reshape(n,1)
+            alpha_a = alpha_y*k_wtest[:,w].reshape(n1,1)
             alphayRalphay = (alpha_a.T @ R_vv @ alpha_a).diag() # 1 x 0
             V1[:,w] = kpost_ztest*alphayRalphay # n_z x  0
     
@@ -194,7 +208,7 @@ class causalKLGP:
             V2b[:,w] = -(bzKvvDw @ torch.linalg.solve(K_wv, bzKvvDw.T)).diag() # ntest x 0
     
             # Getting V3(a)
-            V3a[:,w] = kpost_ztest*K_vv[0,0]*kwtestwtest[w,w] # ntest x 0
+            V3a[:,w] = kpost_ztest*K_v0v0[0,0]*kwtestwtest[w,w] # ntest x 0
 
             # Getting V3b
             B = torch.linalg.solve(K_wv,  k_wtest[:,w].diag() @ R_vv @  k_wtest[:,w].diag())
@@ -203,6 +217,8 @@ class causalKLGP:
         return V1+V2a+V2b+V3a+V3b+torch.exp(self.noise_Y)*(not latent)
 
     def nystrom_sample(self,Y, V, W=[], Z = [], doW = [], doZ = [], reg = 1e-4, features = 100, samples = 10**3, nu = 1):
+
+        ### NOT COMPATIBLE WITH TWO DATASETS
 
         # Set up
         n = len(Y)
@@ -275,68 +291,98 @@ class causalKLGP:
 
         return EYdoZ_sample, YdoZ_sample
         
-    def calibrate(self,Y, V, W, Z, nulist, niter, learn_rate, reg = 1e-4,  train_feature_lengthscale = False, train_cal_split=0.5, levels = [], seed=0, 
-                  nystrom = False, nystrom_features = 100, nystrom_samples = 10**3, calibrate_latent = False, calibrate_norm = 1, train_calibration_model = False):
-
-        # Getting data splits
-        n = len(Y)
-        Y = Y.reshape(n,1)
-        torch.manual_seed(seed)
-        shuffle = torch.randperm(n)
-        ntr = int(n*train_cal_split)
-        Ytr,Vtr,Ztr = Y[shuffle][:ntr],V[shuffle][:ntr],Z[shuffle][:ntr]
-        Ycal,Vcal,Zcal = Y[shuffle][ntr:],V[shuffle][ntr:],Z[shuffle][ntr:]
-        if W!= []:
-            Wtr,Wcal =  W[shuffle][:ntr], W[shuffle][ntr:]
-        else:
-            Wtr,Wcal = [],[]
-
-        # Optionally train calibration model and get cal_f
-        if calibrate_latent:
-            if train_calibration_model:
-                self.train(Ycal, Vcal, Wcal, Zcal, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False, 
-                           train_feature_lengthscale = train_feature_lengthscale)
-            Ycal = self.post_mean(Ycal, Vcal, Wcal, Zcal, Wcal, Zcal, reg = reg).detach()
-
-
-        # Training model and getting post mean
-        self.train(Ytr, Vtr, Wtr, Ztr, reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False,
-                  train_feature_lengthscale = train_feature_lengthscale)
-        mean = self.post_mean(Ytr, Vtr, Wtr, Ztr, Wcal, Zcal, reg = reg).detach()
-
-        
-        # Iterating over hyperlist
-        Calibration_losses= torch.zeros(len(nulist))
-        Post_levels = []
-
-    
-        for k in range(len(nulist)):
-            if not nystrom:
-
-                if calibrate_latent:
-                    var = self.post_var(Ytr, Vtr, Wtr, Ztr, Wcal, Zcal, reg = reg, latent = True, nu = nulist[k]).detach().diag()[:,None]
-                    post_levels = GP_cal(Ycal, mean, var, levels[:,None])
-                else:
-                    var_noise = self.post_var(Ytr, Vtr, Wtr, Ztr, Wcal, Zcal, reg = reg, latent = False, nu = nulist[k]).detach().diag()[:,None]
-                    post_levels = GP_cal(Ycal, mean, var_noise, levels[:,None])
+    def frequentist_calibrate(self, Y , V, W=[], Z=[], doW = [], doZ = [], 
+                              nulist = [], niter = 500, learn_rate = 0.1, reg = 1e-4, 
+                              levels = [], seed=0, bootstrap_replications = 20, retrain_hypers = False,
+                              retrain_iters = 500, retrain_lr = 0.1, sample_split = False, train_cal_split = 0.5,
+                              marginal_loss = False, seed = 0):
+            # Set up
+            if type(V) == list:
+                two_datasets = True
             else:
-                EYdoA_sample, YdoA_sample = self.nystrom_sample(Ytr,Vtr,Wtr, Ztr, Wcal, Zcal, reg, nystrom_features, nystrom_samples, nulist[k])
-                upper_quantiles = 1-(1-levels)/2
-                lower_quantiles = (1-levels)/2
-                u = (upper_quantiles*(nystrom_samples-1)).int()
-                l = (lower_quantiles*(nystrom_samples-1)).int()
-                if calibrate_latent:
-                    Y_u = EYdoA_sample[...,0].sort(0)[0][u]
-                    Y_l = EYdoA_sample[...,0].sort(0)[0][l]
-                else:
-                    Y_u = YdoA_sample[...,0].sort(0)[0][u]
-                    Y_l = YdoA_sample[...,0].sort(0)[0][l]
-                post_levels = ((Y_u>=Ycal[:,0])*(Y_l<=Ycal[:,0])).float().mean(1)
+                V = [V,V]
+                two_datasets = False
                 
-            Post_levels.append(post_levels)
-            Calibration_losses[k] = ((post_levels-levels[:,None].T).abs()**calibrate_norm).mean()     
-  
+            if levels == []:
+                levels = torch.linspace(0,1,101)
+            levels = levels.reshape(len(levels),)
+            z_quantiles = Normal(0, 1).icdf(1-(1-levels)/2).reshape(len(levels),1)
+            n1,n0 = len(Y),len(Z)
+
+            # Specifying base datasets (either by sample splitting or not)
+            if sample_split:
+                torch.manual_seed(seed)
+                shuffle1 = torch.randperm(n1)
+                if two_datasets:                
+                    shuffle0 = torch.randperm(n0)
+                else:
+                    shuffle0 = shuffle1
+                ntr0 = int(n0*train_cal_split)
+                ntr1 = int(n1*train_cal_split)
+                ncal0 = n0-ntr0
+                ncal1 = n1-ntr1
+                Ytr,Vtr,Ztr = Y[shuffle1][:ntr1],[V[0][shuffle0][:ntr0],V[1][shuffle1][:ntr1]],Z[shuffle0][:ntr0]
+                Ycal,Vcal,Zcal = Y[shuffle1][ntr1:],[V[0][shuffle0][ntr0:],V[1][shuffle1][ntr1:]],Z[shuffle0][ntr0:]
+                if W!= []:
+                    Wtr,Wcal =  W[shuffle1][:ntr1], W[shuffle1][ntr1:]
+                else:
+                    Wtr,Wcal = [],[]
+            else:
+                Ytr,Vtr,Wtr,Ztr  = Y,V,W,Z
+                Ycal,Vcal,Wcal,Zcal = Y,V,W,Z
+                ncal1,ncal0 = n1,n0
+                
         
-        return Post_levels, Calibration_losses
+            # Training model for theta(Pn)
+            self.train(Ytr, Vtr, Wtr, Ztr, 
+                       reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False)
+            
+            # Estimating posterior mean \theta(P_n)
+            mean = self.post_mean(Ytr, Vtr, Wtr, Ztr, doW, doZ, reg = reg).detach()
+
+            # Retraining hypers for calibration
+            if retrain_hypers:
+                self.train(Ycal, Acal, Vcal, 
+                   reg = reg, niter = retrain_iters, learn_rate = retrain_lr, switch_grads_off = False)
+            
+            # Getting bootstrap indices
+            bootstrap_inds1 = [torch.randint(0, ncal1, (ncal1,)) for _ in range(bootstrap_replications)]
+            if two_datasets:
+                bootstrap_inds0 = [torch.randint(0, ncal0, (ncal0,)) for _ in range(bootstrap_replications)]
+            else:
+                boostrap_inds0 = bootstrap_inds1
+                
+            # Looping over calibration parameter values and bootstrap datasets
+            Post_levels = torch.zeros((len(nulist),len(doZ), len(levels)))
+            for b in range(len(bootstrap_inds1)):
+                    
+                # Getting dataset
+                Yb, Vb, Zb, = Ycal[bootstrap_inds1[b]], [Vcal[0][bootstrap_inds0[b]],Vcal[1][bootstrap_inds1[b]]], Zcal[bootstrap_inds0[b]]
+                if W != []:
+                    Wb = Wcal[bootstrap_inds1[b]]
+                else:
+                    Wb = []
+             
+                # Get posterior mean
+                meanb = self.post_mean(Yb, Vb, Wb, Zb, doW, doZ, reg = reg).detach()
+
+                # iterating over nulist, get post-var and indicator for is_inside_CI per level and do(Z)xdo(W)
+                for k in range(len(nulist)):
+                    varb = self.post_var(Yb, Vb, Wb, Zb, doW, doZ, reg = reg, latent = True, nu = nulist[k]).detach()
+                    
+                    # Get posterior coverage
+                    is_inside_region = ((mean - meanb).abs() <= varb**0.5 @ z_quantiles.T).float() # len(doZ) x len(levels)
+                    Post_levels[k] += is_inside_region/bootstrap_replications
+
+            # Scoring best model
+            Calibration_losses = torch.zeros(len(nulist))
+        
+            for k in range(len(nulist)):
+                if marginal_loss:
+                    Calibration_losses[k] = (Post_levels[k].mean(0) - levels).abs().mean()
+                else:
+                    Calibration_losses[k] = (Post_levels[k] - levels).abs().mean()
+
+            return Post_levels, Calibration_losses
 
  

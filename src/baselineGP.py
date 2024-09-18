@@ -38,8 +38,12 @@ class baselineGP:
     """Will eventually be specific to front and back door"""
     def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, switch_grads_off = True, force_PD = False, median_heuristic_A = False):
     
+        # Constructing list of V_1,V_2 for compatibility with data fusion case
+        if type(V) != list:
+            V = [V,V]
+        
         """Training P(Y|V)"""
-        n,d = V.size()
+        n,d = V[0].size()
         Y = Y.reshape(n,)
         
         # Optimiser set up
@@ -53,7 +57,7 @@ class baselineGP:
         # Updates
         for i in range(niter):
             optimizer.zero_grad()
-            loss = -GPML(Y, V, self.kernel_V, self.noise_Y.exp(), force_PD = force_PD)
+            loss = -GPML(Y, V[1], self.kernel_V, self.noise_Y.exp(), force_PD = force_PD)
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -87,7 +91,7 @@ class baselineGP:
             optimizer.zero_grad()
             loss = 0
             for j in range(d):
-                loss +=  -GPML(V[:,j], A, self.kernel_A[j], self.noise_feat[j].exp(), force_PD = force_PD)
+                loss +=  -GPML(V[0][:,j], A, self.kernel_A[j], self.noise_feat[j].exp(), force_PD = force_PD)
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -102,8 +106,12 @@ class baselineGP:
 
     def marginal_post_sample(self,Y,V,A,doA, reg = 1e-4, error_samples = 10**2, gp_samples = 10**2):
 
+        # Constructing list of V_1,V_2 for compatibility with data fusion case
+        if type(V) != list:
+            V = [V,V]
+        
         n, ntest = len(Y), len(doA)
-        d, p = V.size()[1], A.size()[1]
+        d, p = V[0].size()[1], A.size()[1]
         Y = Y.reshape(n,1)
         
         # Base Gaussian samples
@@ -115,7 +123,7 @@ class baselineGP:
         VdoA_mu = torch.zeros((ntest,d))
         VdoA_var = torch.zeros((ntest,ntest,d))
         for j in range(d):
-            VdoA_mu[...,j] =  GPpostmean(V[:,j], A, doA, self.kernel_A[j], self.noise_feat[j].exp(), reg) # ntest x 1 (d rows of this)
+            VdoA_mu[...,j] =  GPpostmean(V[0][:,j], A, doA, self.kernel_A[j], self.noise_feat[j].exp(), reg) # ntest x 1 (d rows of this)
             VdoA_var[...,j] = GPpostvar(A, doA, self.kernel_A[j], self.noise_feat[j].exp(), reg, latent = True) # ntest x ntest (d rows of this)
 
         # Sampling from E[V|A] (marginally)
@@ -142,14 +150,13 @@ class baselineGP:
 
             Ek_vdoa1_vdoa2 = self.kernel_V.get_gram(vdoa1,vdoa2).reshape(gp_samples, error_samples).mean(1) # gp_samples x 0
 
-
             # (ii) Computing E[k(g(a)+e,V_tr)]
             vdoa1 = vdoa1[:,0] # gp_samples*error_samples x d
-            Ek_vdoa1_V = self.kernel_V.get_gram(vdoa1, V) # gp_samples*error_samples x n
+            Ek_vdoa1_V = self.kernel_V.get_gram(vdoa1, V[1]) # gp_samples*error_samples x n
             Ek_vdoa1_V = Ek_vdoa1_V.reshape(gp_samples, error_samples, n).mean(1) # gp_samples x n
 
             # Computing moments
-            K_v =self.kernel_V.get_gram(V,V)+torch.eye(n)*self.noise_Y.exp()
+            K_v =self.kernel_V.get_gram(V[1],V[1])+torch.eye(n)*self.noise_Y.exp()
             m_ga = Ek_vdoa1_V @  torch.linalg.solve(K_v,Y) # gp_samples x 1
             v_ga = (Ek_vdoa1_vdoa2 - (Ek_vdoa1_V @ torch.linalg.solve(K_v, Ek_vdoa1_V.T)).diag()).abs() # gp_samples x 1
                 
