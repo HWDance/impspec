@@ -141,7 +141,7 @@ class causalKLGP:
         if W != []:
             alpha_y = alpha_y*self.kernel_W.get_gram(W,doW) # n x ntest_w
         beta_z = torch.linalg.solve(K_z,k_ztest) # n x ntest
-        
+
         return  (beta_z.T @ K_vv @ alpha_y) # ntest_z x ntest_w
         
     """Compute Var[E[Y|(do(Z)]] in Z -> V -> Y """

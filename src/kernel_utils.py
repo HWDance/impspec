@@ -43,9 +43,22 @@ def get_Gaussian_kernel_eigs(X_train,kernel_params, mc_approx = True, mc_samples
 """
 Returns median heuristic lengthscale for Gaussian kernel
 """
-def median_heuristic(X):
-    # Median heurstic for inputs
-    Dist = torch.cdist(X,X, p = 2.0)**2
-    Lower_tri = torch.tril(Dist, diagonal=-1).view(len(X)**2).sort(descending = True)[0]
-    Lower_tri = Lower_tri[Lower_tri!=0]
-    return (Lower_tri.median()/2).sqrt()
+def median_heuristic(X, per_dimension = False):
+    if not per_dimension:
+        # Median heurstic for inputs
+        Dist = torch.cdist(X,X, p = 2.0)**2
+        Lower_tri = torch.tril(Dist, diagonal=-1).view(len(X)**2).sort(descending = True)[0]
+        Lower_tri = Lower_tri[Lower_tri!=0]
+        return (Lower_tri.median()/2).sqrt()
+        
+    else:
+        medheur = torch.zeros(X.shape[1])
+        for i in range(X.shape[1]):
+            Dist = torch.cdist(X[:,i:i+1],X[:,i:i+1], p = 2.0)**2
+            Lower_tri = torch.tril(Dist, diagonal=-1).view(len(X)**2).sort(descending = True)[0]
+            Lower_tri = Lower_tri[Lower_tri!=0]
+            medheur[i] = (Lower_tri.median()/2).sqrt()
+        return medheur
+        
+
+

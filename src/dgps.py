@@ -48,24 +48,33 @@ def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_sampl
     return Xtrain, Ytrain, Ttrain, Xtest, Ytest, Ttest, ET
 
 
-def STATIN_PSA(samples, seed = 0, gamma = False):
+def STATIN_PSA(samples = 10**4, seed = 0, gamma = False, 
+               interventional_data = False, dostatin=[]):
+    
     torch.manual_seed(seed)
+
+    if interventional_data:
+        statin = dostatin.repeat_interleave(samples)
+        samples *= len(dostatin)
 
     age = Uniform(15,75).sample((samples,))
     bmi = Normal(27-0.01*age, 0.7**0.5).sample()
     aspirin = torch.sigmoid(-8 + 0.1*age + 0.03*bmi)
-    statin = torch.sigmoid(-13 + 0.1*age + 0.2*bmi)
+    if not interventional_data:
+        statin = torch.sigmoid(-13 + 0.1*age + 0.2*bmi)
     cancer = torch.sigmoid(2.2 - 0.05*age + 0.01*bmi - 0.04*statin + 0.02*aspirin)
     if gamma:
         psa = Gamma(100, 20/(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer)).sample()
     else:
         psa = 5*Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5).sample()
+    
     return age, bmi, aspirin, statin, cancer, psa
 
-
-def PSA_VOL(samples, seed = 0, psa = []):
+def PSA_VOL(samples = 10**4, seed = 0, psa = []):
     
     torch.manual_seed(seed)
+    if psa!=[]:
+        samples = len(psa)
     
     # Estimated in Kato et al (2008)
     def get_vol(psa):
