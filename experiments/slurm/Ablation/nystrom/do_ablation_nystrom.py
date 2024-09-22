@@ -14,12 +14,14 @@ from src.dgps import *
 # main
 def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True, sample_split = False,
          marginal_loss = False, retrain_hypers = False, features = 100, samples = 1000):
-    
+
+    torch.manual_seed(seed)
+
     """ Fixed configs """
     default_nu = 1.0
     cal_nulist = 2**torch.linspace(-4,4,5)
     quantiles = torch.linspace(0,1,101)
-    reg = 1e-4
+    reg = 1e-3
     Kernel = GaussianKernel
     
     """ Draw data """

@@ -12,15 +12,22 @@ from src.kernels import *
 from src.dgps import *
 
 # main
-def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, error_samples = 10**2, gp_samples = 10**2):
+def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, error_samples = 10**2, gp_samples = 10**2,kernel = "gaussian"):
     
+    torch.manual_seed(seed)
+
     """ Fixed configs """
     Kernel = GaussianKernel
     single_kernel = False
     quantiles = torch.linspace(0,1,101)
-    reg = 1e-4
+    reg = 1e-3
     force_PD = True
 
+    if kernel == "gaussian":
+        Kernel = GaussianKernel
+    else:
+        Kernel = GammaExponentialKernel
+    
     """ Draw data """
     Z, V, Y, doZ, YdoZ, EYdoZ = Abelation(n, ntest, d, noise, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = seed) 
     

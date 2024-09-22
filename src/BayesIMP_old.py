@@ -30,7 +30,7 @@ class BayesIMP:
         self.noise_feat = torch.tensor(-2.0, requires_grad = True)
 
     """Will eventually be specific to front and back door"""
-    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, optimise_measure = False, measure_init = 1.0, mc_samples = 10):
+    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, optimise_measure = False, measure_init = 1.0, mc_samples = 100):
 
         self.kernel_V.samples = mc_samples
         

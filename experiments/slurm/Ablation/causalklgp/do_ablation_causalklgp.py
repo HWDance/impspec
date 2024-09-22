@@ -13,14 +13,20 @@ from src.dgps import *
 
 # main
 def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True, sample_split = False,
-         marginal_loss = False, retrain_hypers = False):
+         marginal_loss = False, retrain_hypers = False, kernel = "gaussian"):
+    
+    torch.manual_seed(seed)
     
     """ Fixed configs """
     default_nu = 1.0
     cal_nulist = 2**torch.linspace(-4,4,5)
     quantiles = torch.linspace(0,1,101)[:,None]
-    reg = 1e-4
-    Kernel = GaussianKernel
+    reg = 1e-3
+
+    if kernel == "gaussian":
+        Kernel = GaussianKernel
+    else:
+        Kernel = GammaExponentialKernel
     
     """ Draw data """
     Z, V, Y, doZ, YdoZ, EYdoZ = Abelation(n, ntest, d, noise, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = seed) 

@@ -33,10 +33,6 @@ class Kernel:
         # Computes K_XZ
         raise NotImplementedError
 
-    def get_nuclear_gram(self, X : torch.tensor, Z : torch.tensor, mu : torch.distributions, samples : int):
-        # Computes K_XZ
-        raise NotImplementedError
-
 class GaussianKernel(Kernel):
         
     def get_gram(self,X,Z):
@@ -124,8 +120,7 @@ class NuclearKernel:
         exponent2 = -1/8*torch.cdist(X*torch.diag(B_inv)**0.5, -Z*torch.diag(B_inv)**0.5, p=2.0)**2
         
         return self.base_kernel.scale**4*normaliser*torch.exp(exponent1+exponent2)*self.dist.scale**-d
-        return self.base_kernel.get_gram_nuclear(X,Z)
-
+        
     def get_gram_base(self, X: torch.tensor, Z: torch.tensor):
         """Returns gram matrix of base kernel"""
         return self.base_kernel.get_gram(X,Z)

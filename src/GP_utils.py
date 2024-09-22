@@ -3,40 +3,51 @@ import torch.nn as nn
 from torch.distributions import MultivariateNormal, Normal
 
 class GaussianProcess(nn.Module):
-    def __init__(self, X_train=None, y_train=None, kernel=None, mean = lambda x : 0, noise=None, nugget=1e-2, noise_init = -10.0):
+    def __init__(self, X_train=None, y_train=None, kernel=None, noise_init=1e-5, nugget=1e-6, mean=None):
         super(GaussianProcess, self).__init__()
         self.X_train = X_train
         self.y_train = y_train
         self.kernel = kernel
-        self.mean = mean
         
         # Initialize noise hyperparameter
-        self.noise = nn.Parameter(noise if noise is not None else torch.tensor(noise_init))
+        self.noise = nn.Parameter(torch.tensor(noise_init))
 
         # Nugget regularization term
         self.nugget = nugget
 
-    def forward(self, X_test, latent = False):
+        # Mean function
+        self.mean_func = mean if mean is not None else (lambda X: torch.zeros(X.shape[0], 1))
+
+    def forward(self, X_test):
         if self.X_train is None or self.y_train is None or self.X_train.numel() == 0 or self.y_train.numel() == 0:
-            # If there's no training data, return mean 0 and large covariance
-            mu_s = torch.zeros(X_test.shape[0],1)
+            # If there's no training data, return mean m(X_test) and large covariance
+            mu_s = self.mean_func(X_test)
             cov_s = self.kernel.get_gram(X_test, X_test) + (self.noise.exp() + self.nugget) * torch.eye(len(X_test))
             return mu_s, cov_s
         else:
             # Compute the Gram matrices for training data and between training and test data
             K = self.kernel.get_gram(self.X_train, self.X_train) + (self.noise.exp() + self.nugget) * torch.eye(len(self.X_train))
+            L = torch.linalg.cholesky(K)  # Use safe Cholesky decomposition
+
+            # Calculate the centered y_train
+            y_train_centered = self.y_train - self.mean_func(self.X_train)
+
+            # Solve for alpha = K_inv @ (y_train - m(X_train)) using Cholesky solve
+            alpha = torch.cholesky_solve(y_train_centered, L)
+
+            # Compute the mean at test points
             K_s = self.kernel.get_gram(self.X_train, X_test)
-            K_ss = self.kernel.get_gram(X_test, X_test) + (self.noise.exp()*(not latent) + self.nugget) * torch.eye(len(X_test))
+            mu_s = self.mean_func(X_test) + K_s.T @ alpha
 
-            # Solve for alpha = K_inv @ y_train using torch.linalg.solve
-            alpha = torch.linalg.solve(K, self.y_train - self.mean(self.X_train))
-
-            # Posterior mean
-            mu_s = K_s.T @ alpha + self.mean(X_test)
-
-            # Posterior variance
-            v = torch.linalg.solve(K, K_s)
+            # Compute the covariance at test points
+            K_ss = self.kernel.get_gram(X_test, X_test) + (self.noise.exp() + self.nugget) * torch.eye(len(X_test))
+            v = torch.cholesky_solve(K_s, L)
             cov_s = K_ss - K_s.T @ v
+
+            # Check for NaNs and handle them
+            if torch.isnan(cov_s).any():
+                print("NaNs detected in covariance matrix")
+                cov_s = torch.nan_to_num(cov_s, nan=1e-9)
 
             return mu_s, cov_s
 
@@ -83,7 +94,13 @@ def GPML(Y, X, kernel_X, noise_Y,reg = 1e-4, force_PD = False):
     K_xx = kernel_X.get_gram(X,X)
     if force_PD:
         K_xx = (K_xx+K_xx.T)/2
-    return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y).sum()
+    L = torch.linalg.cholesky((K_xx + (noise_Y+reg)*torch.eye(n)).double())
+    alpha = torch.cholesky_solve(Y.reshape(n,1).double(), L).float()
+
+    log_likelihood = -0.5 * Y.reshape(n,1).T @ alpha
+    log_likelihood -= torch.sum(torch.log(torch.diag(L)))
+    return log_likelihood    
+    #return MultivariateNormal(torch.zeros(n),K_xx+(noise_Y+reg)*torch.eye(n)).log_prob(Y).sum()
 
 def GPfeatureML(Y, X, kernel_Y, kernel_X, noise_feat, reg = 1e-4):
     n = len(Y)

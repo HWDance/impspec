@@ -66,7 +66,7 @@ def STATIN_PSA(samples = 10**4, seed = 0, gamma = False,
     if gamma:
         psa = Gamma(100, 20/(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer)).sample()
     else:
-        psa = 5*Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5).sample()
+        psa = Normal(6.8 + 0.04*age - 0.15*bmi - 0.60*statin + 0.55*aspirin + cancer, 0.4**0.5).sample()
     
     return age, bmi, aspirin, statin, cancer, psa
 

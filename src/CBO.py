@@ -1,20 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.optim
+import sys
 from src.GP_utils import GaussianProcess 
+
 class CausalKernel:
-    def __init__(self, estimate_mean_func, estimate_var_func, base_kernel=None, add_base_kernel=True):
+    def __init__(self, estimate_var_func, base_kernel=None, add_base_kernel=True):
         """
         CausalKernel that incorporates dynamic estimation of \hat{E}[Y|do(X=x)] and \hat Var [\hat E[Y|do(X=x)]].
         Optionally adds a base kernel (e.g., RBF) to the causal kernel.
 
-        :param estimate_mean_func: Function to estimate \hat{E}[Y|do(X=x)] for any input X.
         :param estimate_var_func: Function to estimate \hat{Var}[\hat{E}[Y|do(X=x)]] for any input X.
         :param base_kernel: A base kernel (e.g., RBF kernel) to add to the causal kernel.
         :param add_base_kernel: Boolean indicating whether to add the base kernel to the causal kernel.
         """
         super(CausalKernel, self).__init__()
-        self.estimate_mean_func = estimate_mean_func
         self.estimate_var_func = estimate_var_func
         self.base_kernel = base_kernel
         self.add_base_kernel = add_base_kernel
@@ -44,26 +44,29 @@ class CausalKernel:
             return causal_kernel
 
         
-def expected_improvement(mu, sigma, y_max, xi=0.01, minimise = False):
+def expected_improvement(mu, sigma, y_best, xi=0.01, minimise = False):
     """Calculate the expected improvement."""
     sigma = sigma.clamp(min=1e-9)  # Numerical stability
     with torch.no_grad():
         if minimise:
-            Z = -(mu - y_max - xi) / sigma
-            ei = -(mu - y_max - xi) * torch.distributions.Normal(0, 1).cdf(Z) + sigma * torch.distributions.Normal(0, 1).log_prob(Z).exp()
+            Z = -(mu - y_best - xi) / sigma
+            if sigma.isnan().sum()>0:
+                sys.exit("NAN's in sigma")
+            ei = -(mu - y_best - xi) * torch.distributions.Normal(0, 1).cdf(Z) + sigma * torch.distributions.Normal(0, 1).log_prob(Z).exp()
         
         else:
-            Z = (mu - y_max - xi) / sigma
-            ei = (mu - y_max - xi) * torch.distributions.Normal(0, 1).cdf(Z) + sigma * torch.distributions.Normal(0, 1).log_prob(Z).exp()
+            Z = (mu - y_best - xi) / sigma
+            ei = (mu - y_best - xi) * torch.distributions.Normal(0, 1).cdf(Z) + sigma * torch.distributions.Normal(0, 1).log_prob(Z).exp()
         return ei
         
-def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, X_test=None, Y_test=None, n_iter=10, update_hyperparameters=True, update_interval=1, hyperparam_steps=100, lr=0.01, xi = 0.01, print_ = True, minimise = False, noise_init = -10.0):
+def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, mean = None, X_test=None, Y_test=None, n_iter=10, update_hyperparameters=True, update_interval=1, hyperparam_steps=100, lr=0.01, xi = 0.01, print_ = True, minimise = False, noise_init = -10.0, reg = 1e-3):
     """
     Causal Bayesian Optimization function with optional hyperparameter updating.
 
     :param X_train: Initial training inputs (can be None).
     :param y_train: Initial training outputs (can be None).
     :param kernel: Kernel to be used in the Gaussian Process model.
+    :param mean: mean function to be used in the Gaussian Process model.
     :param X_test: Grid of test points (input values) for evaluation.
     :param Y_test: Precomputed grid of test outputs (true values).
     :param n_iter: Number of iterations for optimization.
@@ -78,10 +81,10 @@ def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, X_test
         y_train = torch.empty((0, 1))  # Initialize empty tensor
 
     # Initialize Gaussian Process model with the initial data and kernel
-    gp = GaussianProcess(X_train=X_train, y_train=y_train, kernel=kernel, noise_init = noise_init)
+    gp = GaussianProcess(X_train=X_train, y_train=y_train, kernel=kernel, noise_init = noise_init, mean = mean, nugget = reg)
 
     # Initialize the maximum observed value
-    y_max = torch.max(y_train) if len(y_train) > 0 else -float('inf')
+    y_best = torch.max(y_train) if len(y_train) > 0 else 0
 
     for i in range(n_iter):
         # Get the GP predictions for the test grid
@@ -89,7 +92,7 @@ def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, X_test
         sigma_s = torch.sqrt(torch.diag(cov_s))
 
         # Calculate the Expected Improvement
-        ei = expected_improvement(mu_s[:,0], sigma_s, y_max, xi = xi, minimise = minimise)
+        ei = expected_improvement(mu_s[:,0], sigma_s, y_best, xi = xi, minimise = minimise)
 
         # Find the next best point
         next_index = torch.argmax(ei)
@@ -109,8 +112,11 @@ def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, X_test
             gp.optimize_hyperparameters(num_steps=hyperparam_steps, lr=lr, print_ = print_)
 
         # Update the best observed value
-        y_max = torch.max(y_train)
-
+        if minimise:
+            y_best = torch.min(y_train)
+        else:
+            y_best = torch.max(y_train)
+            
         if print_:
             print(f"Iteration {i+1}: X = {next_x.item()}, Y = {next_y.item()}")
 
