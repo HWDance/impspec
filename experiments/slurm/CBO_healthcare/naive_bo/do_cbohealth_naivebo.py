@@ -22,7 +22,7 @@ def main(seed, n, n_int):
     n_iter = 20
     xi = 0.0
     update_hyperparameters = False
-    noise_init = -1.0
+    noise_init = -10.0
     cbo_reg = 1e-3
     
     """ Draw int data """
@@ -42,9 +42,9 @@ def main(seed, n, n_int):
         return torch.zeros((len(X),1))
 
             
-    medheur = median_heuristic(statin[:,None].reshape(n_int,int_samples).mean(1)[:,None])
-    rbf_kernel = GaussianKernel(lengthscale=torch.tensor([medheur]).requires_grad_(True), 
-                            scale=torch.tensor([vol.var()**0.5]).requires_grad_(True))
+    #medheur = median_heuristic(statin[:,None].reshape(n_int,int_samples).mean(1)[:,None])
+    rbf_kernel = GaussianKernel(lengthscale=torch.tensor([0.1]).requires_grad_(True), 
+                            scale=torch.tensor([5.0]).requires_grad_(True))
     cbo_kernel = CausalKernel(
         estimate_var_func=var,
         base_kernel=rbf_kernel,
@@ -65,7 +65,7 @@ def main(seed, n, n_int):
     doXeval, EYdoXeval = causal_bayesian_optimization(X_train = doXtrain, 
                                                         y_train = EYdoXtrain, 
                                                         kernel = cbo_kernel, 
-                                                        mean = lambda x : torch.ones(len(x),1)*EYdoX.mean(),
+                                                        mean = lambda x : torch.zeros(len(x),1),
                                                         X_test = doX, 
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 

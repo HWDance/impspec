@@ -34,13 +34,12 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, error_samples = 1
     """ Initialise model """
     model = baselineGP(Kernel_A = Kernel, 
                    Kernel_V = Kernel, 
-                   Kernel_Z = [],
                    dim_A = Z.size()[1], 
                    dim_V = V.size()[1], 
                    single_kernel = single_kernel)
 
     """ Train model """
-    model.train(Y,Z,V,niter,learn_rate, force_PD = force_PD)
+    model.train(Y,Z,V,niter,learn_rate, force_PD = force_PD, reg = reg)
     
     """ Get Posterior mean """
     EYdoZ_samples, EVdoZ_samples = model.marginal_post_sample(Y,V,Z,doZ, 
@@ -63,5 +62,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, error_samples = 1
             "rmse" : rmse, 
            "cal_levels" : quantiles,
            "post_levels" : posterior_fraction,
-           # "objs" : [EYdoZ_samples,EY_u,EY_l,EYdoZ]
+           "post_samples" : [EYdoZ_samples],
+            "obs_data" : [Z,Y],
+            "int_data" : [doZ,EYdoZ]
            }

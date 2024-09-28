@@ -140,7 +140,7 @@ class ProductKernel:
             each element as N x P_i """
         assert (len(X) == len(Z))
 
-        K = torch.ones((len(X[:,0]),len(Z[:,0])))
+        K = torch.ones((len(X[0]),len(Z[0])))
 
         for i in range(len(X)):
             K *= self.kernels[i].get_gram(X[i],Z[i])

@@ -9,7 +9,7 @@ class causalKLGP:
     causalKLGP method for estimating posterior moments of average causal effects
     """
 
-    def __init__(self,Kernel_A, Kernel_V, Kernel_Z, dim_A, dim_V, samples, 
+    def __init__(self,Kernel_A, Kernel_V, dim_A, dim_V, samples, 
                  lengthscale_V_init = 1.0, scale_V_init = 1.0, noise_Y_init = -1.0,
                  lengthscale_A_init = 1.0, scale_A_init = 1.0, noise_feat_init = -2.0):
 
@@ -68,7 +68,7 @@ class causalKLGP:
         
         """Training P(Y|V)"""
 
-        self.kernel_V.lengthscale = median_heuristic(V[1], per_dimension = True)
+        self.kernel_V.base_kernel.lengthscale = median_heuristic(V[1], per_dimension = True)
 
         # Optimiser set up
         params_list = [self.kernel_V.base_kernel.lengthscale,

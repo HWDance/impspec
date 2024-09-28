@@ -8,31 +8,33 @@ class baselineGP:
     causalKLGP method for estimating posterior moments of average causal effects
     """
 
-    def __init__(self,Kernel_A, Kernel_V, Kernel_Z, dim_A, dim_V, single_kernel = True):
+    def __init__(self,Kernel_A, Kernel_V, dim_A = 1, dim_V = 1, single_kernel = False,
+                lengthscale_V_init = 1.0, scale_V_init = 1.0, noise_Y_init = -2.0,
+                lengthscale_A_init = 1.0, scale_A_init = 1.0, noise_feat_init = -2.0):
 
         d,p = dim_V, dim_A
 
         self.single_kernel = single_kernel
 
-        self.kernel_V = Kernel_V(lengthscale = torch.tensor([d**0.5*1.0]).repeat(d).requires_grad_(True), 
-                                    scale = torch.tensor([1.0], requires_grad = True))
-        self.noise_Y = torch.tensor(-2.0, requires_grad = True).float()
+        self.kernel_V = Kernel_V(lengthscale = torch.tensor([d**0.5*lengthscale_V_init]).repeat(d).requires_grad_(True), 
+                                    scale = torch.tensor(scale_V_init, requires_grad = True))
+        self.noise_Y = torch.tensor(noise_Y_init, requires_grad = True).float()
 
         self.kernel_A = []
         self.noise_feat = []
         
         # Initialising hypers  
         if self.single_kernel:
-            kernel_a = Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
-                                  scale = torch.tensor([1.0], requires_grad = True))
-            noise = (-2.0*torch.ones(1)).requires_grad_(True)
+            kernel_a = Kernel_A(lengthscale = torch.tensor(p**0.5*lengthscale_A_init).repeat(p).requires_grad_(True),
+                                  scale = torch.tensor(scale_A_init, requires_grad = True))
+            noise = (noise_feat_init*torch.ones(1)).requires_grad_(True)
             self.kernel_A.extend([kernel_a]*d)
             self.noise_feat.extend([noise]*d)  
         else:
             for j in range(d):
-                self.kernel_A.append(Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
-                                      scale = torch.tensor([1.0], requires_grad = True)))
-                self.noise_feat.append((-2.0*torch.ones(1)).requires_grad_(True))
+                self.kernel_A.append(Kernel_A(lengthscale = torch.tensor(p**0.5*lengthscale_A_init).repeat(p).requires_grad_(True),
+                                      scale = torch.tensor(scale_A_init, requires_grad = True)))
+                self.noise_feat.append((noise_feat_init*torch.ones(1)).requires_grad_(True))
             
 
     """Will eventually be specific to front and back door"""
@@ -135,6 +137,7 @@ class baselineGP:
         EYdoA_samples = torch.zeros((ntest, gp_samples))
 
         # Now iteratively get moments of E[Y|do(a), f, g] | g  ~ N(m_g(a), v_g(a))
+        K_v =self.kernel_V.get_gram(V[1],V[1])+torch.eye(n)*self.noise_Y.exp()
         for i in range(ntest):
 
             # (i) Computing E[k(g(a)+e, g'(a) + e')|g=g'= hat g]
@@ -156,7 +159,6 @@ class baselineGP:
             Ek_vdoa1_V = Ek_vdoa1_V.reshape(gp_samples, error_samples, n).mean(1) # gp_samples x n
 
             # Computing moments
-            K_v =self.kernel_V.get_gram(V[1],V[1])+torch.eye(n)*self.noise_Y.exp()
             m_ga = Ek_vdoa1_V @  torch.linalg.solve(K_v,Y) # gp_samples x 1
             v_ga = (Ek_vdoa1_vdoa2 - (Ek_vdoa1_V @ torch.linalg.solve(K_v, Ek_vdoa1_V.T)).diag()).abs() # gp_samples x 1
                 

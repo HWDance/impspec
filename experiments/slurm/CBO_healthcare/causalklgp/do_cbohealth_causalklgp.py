@@ -12,17 +12,9 @@ from src.kernels import *
 from src.dgps import *
 from src.CBO import *
 
-# CBO prior kernel class
-class CBOPriorKernel:
-    def __init__(self,kernel_func):
-        self.kernel_func = kernel_func
-
-    def get_gram(self,X,Z):
-        return self.kernel_func(X,Z)
-
 # main
 def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
-         calibrate = True, sample_split = False, marginal_loss = False, retrain_hypers = False): 
+         calibrate = True, sample_split = True, marginal_loss = False, retrain_hypers = False): 
     
     torch.manual_seed(seed)
     
@@ -39,7 +31,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     n_iter = 20
     xi = 0.0
     update_hyperparameters = False
-    noise_init = -1.0
+    noise_init = -10.0
     cbo_reg = 1e-3
     
     """ Draw int data """
@@ -59,14 +51,14 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
                                                               dostatin=[])
     if two_datasets:
         age_2, bmi_2, aspirin_2, statin_2, cancer_2, psa_2 = STATIN_PSA(n, 
-                                                          seed = seed, 
+                                                          seed = seed+1, 
                                                           gamma = False, 
                                                           interventional_data = False, 
                                                           dostatin=[])
-        psa_, fvol_, vol_ = PSA_VOL(psa = psa_2)
+        psa_2, fvol_2, vol_2 = PSA_VOL(psa = psa_2)
         A = torch.column_stack((age_, bmi_, aspirin_, statin_))
-        V = psa_.reshape(len(psa_),1)
-        Y = vol_
+        V = [psa_.reshape(len(psa_),1),psa_2.reshape(len(psa_),1)]
+        Y = vol_2
         
     else:
         psa_, fvol_, vol_ = PSA_VOL(psa = psa_)
@@ -77,9 +69,8 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     """ Initialise model """
     model = causalKLGP(Kernel_A = Kernel, 
                    Kernel_V = Kernel, 
-                   Kernel_Z = [],
                    dim_A = A.size()[1], 
-                   dim_V = V.size()[1], 
+                   dim_V = V[1].size()[1], 
                    samples = 10**5,
                    scale_V_init = Y.var()**0.5/2,
                    noise_Y_init = torch.log(Y.var()/4)
@@ -88,13 +79,16 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     """ Train + Calibrate model """
     if calibrate:
         Post_levels, Calibration_losses = model.frequentist_calibrate(Y, V, A, dostatin[:,None],
-                                                                     nulist = cal_nulist,
-                                                                     sample_split = sample_split,
+                                                                     niter = niter, 
+                                                                     learn_rate = learn_rate,
+                                                                     bootstrap_replications = bootreps,
+                                                                     nulist = cal_nulist,                                                                                           sample_split = sample_split,
                                                                      marginal_loss = marginal_loss,
                                                                      retrain_hypers = retrain_hypers,
                                                                      average_doA = True,
                                                                      intervention_indices = [3],
-                                                                     force_PD = force_PD
+                                                                     force_PD = force_PD,
+                                                                     reg = reg
                                                                     )
         best_ind = torch.where(Calibration_losses == Calibration_losses.min())[0][0]
         nu_best = cal_nulist[best_ind]
@@ -102,7 +96,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
         nu_best = default_nu
         
     if (not calibrate) or sample_split: 
-        model.train(Y, A, V, niter, learn_rate, force_PD = force_PD)   
+        model.train(Y, A, V, niter, learn_rate, force_PD = force_PD, reg = reg)   
         
     """ Get posterior funcs and CBO prior kernel """
     def mean(X):

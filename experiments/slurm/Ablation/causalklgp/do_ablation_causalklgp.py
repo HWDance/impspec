@@ -7,7 +7,7 @@ path = Path.cwd().parents[3]
 if str(path) not in sys.path:
     sys.path.append(str(path))
 
-from src.causalKLGP import *
+from src.causalKLGPfull import *
 from src.kernels import *
 from src.dgps import *
 
@@ -34,7 +34,6 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     """ Initialise model """
     model = causalKLGP(Kernel_A = Kernel, 
                    Kernel_V = Kernel, 
-                   Kernel_Z = [],
                    dim_A = Z.size()[1], 
                    dim_V = V.size()[1], 
                    samples = 10**5)
@@ -42,22 +41,26 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     """ Train + Calibrate model """
     if calibrate:
         Post_levels, Calibration_losses = model.frequentist_calibrate(Y, V, Z, doZ,
+                                                                      niter = niter, 
+                                                                      learn_rate = learn_rate,
+                                                                      reg = reg,
+                                                                     bootstrap_replications = bootreps,
                                                                      nulist = cal_nulist,
                                                                      sample_split = sample_split,
                                                                      marginal_loss = marginal_loss,
-                                                                     retrain_hypers = retrain_hypers
+                                                                     retrain_hypers = retrain_hypers,
+                                                                     reg = reg
                                                                     )
         best_ind = torch.where(Calibration_losses == Calibration_losses.min())[0][0]
         nu_best = cal_nulist[best_ind]
     else:
         nu_best = default_nu
     if (not calibrate) or sample_split: 
-        model.train(Y, Z, V, niter,learn_rate)
+        model.train(Y, Z, V, niter = niter, learn_rate = learn_rate, reg = reg)
     
     """ Get Posterior moments """
-    mean = model.post_mean(Y, Z, V, doZ).detach()
-    var = model.post_var(Y, Z, V, doZ, reg = reg, latent = True, nu = nu_best).detach()
-    var_noise = model.post_var(Y, Z, V, doZ, reg = reg, latent = False, nu = nu_best).detach()
+    mean = model.post_mean(Y, Z, V, doA = doZ, reg = reg).detach()
+    var = model.post_var(Y, Z, V, doA = doZ, reg = reg, latent = True, nu = nu_best).detach()
 
 
     """ Compute out of sample metrics """
@@ -68,5 +71,8 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     return {"name" : "causalklgp_cal={0}_split={1}".format(calibrate, sample_split),
             "rmse" : rmse, 
            "cal_levels" : quantiles,
-           "post_levels" : posterior_fraction
+           "post_levels" : posterior_fraction,
+            "post_moments" : [mean,var],
+            "obs_data" : [Z,Y],
+            "int_data" : [doZ,EYdoZ]
            }

@@ -23,7 +23,7 @@ def main(seed, n, n_int, two_datasets = True):
     learn_rate = 0.1
     single_kernel = False
     force_PD = True
-    reg = 1e-1
+    reg = 1e-3
     error_samples = 100
     gp_samples = 100
     Kernel = GaussianKernel
@@ -33,8 +33,8 @@ def main(seed, n, n_int, two_datasets = True):
     n_iter = 20
     xi = 0.0
     update_hyperparameters = False
-    noise_init = 0.0
-    cbo_reg = 1e-1
+    noise_init = -10.0
+    cbo_reg = 1e-3
     
     
     """ Draw int data """
@@ -54,14 +54,14 @@ def main(seed, n, n_int, two_datasets = True):
                                                               dostatin=[])
     if two_datasets:
         age_2, bmi_2, aspirin_2, statin_2, cancer_2, psa_2 = STATIN_PSA(n, 
-                                                          seed = seed, 
+                                                          seed = seed+1, 
                                                           gamma = False, 
                                                           interventional_data = False, 
                                                           dostatin=[])
-        psa_, fvol_, vol_ = PSA_VOL(psa = psa_2)
+        psa_2, fvol_2, vol_2 = PSA_VOL(psa = psa_2)
         A = torch.column_stack((age_, bmi_, aspirin_, statin_))
-        V = psa_.reshape(len(psa_),1)
-        Y = vol_
+        V = [psa_.reshape(len(psa_),1),psa_2.reshape(len(psa_),1)]
+        Y = vol_2
         
     else:
         psa_, fvol_, vol_ = PSA_VOL(psa = psa_)
@@ -74,9 +74,11 @@ def main(seed, n, n_int, two_datasets = True):
                    Kernel_V = Kernel, 
                    Kernel_Z = [],
                    dim_A = A.size()[1], 
-                   dim_V = V.size()[1], 
-                   single_kernel = single_kernel)
-
+                   dim_V = V[1].size()[1], 
+                   single_kernel = single_kernel,
+                   scale_V_init = Y.var()**0.5/2,
+                   noise_Y_init = torch.log(Y.var()/4))
+    
     """ Train model """
     model.train(Y,A,V,niter,learn_rate, force_PD = force_PD)
 
@@ -98,7 +100,7 @@ def main(seed, n, n_int, two_datasets = True):
             
     medheur = median_heuristic(statin[:,None].reshape(n_int,int_samples).mean(1)[:,None])
     rbf_kernel = GaussianKernel(lengthscale=torch.tensor([medheur]).requires_grad_(True), 
-                            scale=torch.tensor([vol.var()**0.5]).requires_grad_(True))
+                            scale=torch.tensor(Y.var()**0.5/2).requires_grad_(True))
     cbo_kernel = CausalKernel(
         estimate_var_func=var,
         base_kernel=rbf_kernel,
@@ -119,7 +121,7 @@ def main(seed, n, n_int, two_datasets = True):
     doXeval, EYdoXeval = causal_bayesian_optimization(X_train = doXtrain, 
                                                         y_train = EYdoXtrain, 
                                                         kernel = cbo_kernel, 
-                                                        mean = lambda x : torch.ones(len(x),1)*EYdoX.mean(),
+                                                        mean = mean,
                                                         X_test = doX, 
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 

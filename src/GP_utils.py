@@ -18,7 +18,7 @@ class GaussianProcess(nn.Module):
         # Mean function
         self.mean_func = mean if mean is not None else (lambda X: torch.zeros(X.shape[0], 1))
 
-    def forward(self, X_test):
+    def forward(self, X_test, force_PD = True):
         if self.X_train is None or self.y_train is None or self.X_train.numel() == 0 or self.y_train.numel() == 0:
             # If there's no training data, return mean m(X_test) and large covariance
             mu_s = self.mean_func(X_test)
@@ -27,6 +27,9 @@ class GaussianProcess(nn.Module):
         else:
             # Compute the Gram matrices for training data and between training and test data
             K = self.kernel.get_gram(self.X_train, self.X_train) + (self.noise.exp() + self.nugget) * torch.eye(len(self.X_train))
+            if force_PD:
+                K = 0.5*(K + K.T).abs()
+            
             L = torch.linalg.cholesky(K)  # Use safe Cholesky decomposition
 
             # Calculate the centered y_train
@@ -90,7 +93,7 @@ class GaussianProcess(nn.Module):
             print("Optimization completed.")
 
 def GPML(Y, X, kernel_X, noise_Y,reg = 1e-4, force_PD = False):
-    n = len(X)
+    n = len(Y)
     K_xx = kernel_X.get_gram(X,X)
     if force_PD:
         K_xx = (K_xx+K_xx.T)/2

@@ -7,7 +7,7 @@ path = Path.cwd().parents[3]
 if str(path) not in sys.path:
     sys.path.append(str(path))
 
-from src.BayesIMP import *
+from src.BayesIMPfull import *
 from src.kernels import *
 from src.dgps import *
 
@@ -33,18 +33,17 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, optimise_mu = Tru
     """ Initialise model """
     model = BayesIMP(Kernel_A = Kernel, 
                    Kernel_V = Kernel, 
-                   Kernel_Z = [],
                    dim_A = Z.size()[1], 
                    dim_V = V.size()[1], 
                    samples = 10**5,
                    exact = exact)
 
     """ Train model """
-    model.train(Y,Z,V,niter,learn_rate, optimise_measure = optimise_mu, mc_samples = mc_samples)
+    model.train(Y,Z,V,niter=niter,learn_rate=learn_rate, optimise_measure = optimise_mu, mc_samples = mc_samples, reg = reg)
     
     """ Get Posterior moments """
-    mean = model.post_mean(Y, Z, V, doZ).detach()
-    var = model.post_var(Y, Z, V, doZ, reg = reg, latent = True, diag = True).detach()
+    mean = model.post_mean(Y, Z, V, doA = doZ, reg = reg).detach()
+    var = model.post_var(Y, Z, V, doA = doZ, reg = reg, latent = True, diag = True).detach()
 
 
     """ Compute out of sample metrics """
@@ -56,4 +55,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, optimise_mu = Tru
             "rmse" : rmse, 
            "cal_levels" : quantiles,
            "post_levels" : posterior_fraction,
+            "post_moments" : [mean,var],
+            "obs_data" : [Z,Y],
+            "int_data" : [doZ,EYdoZ]
            }

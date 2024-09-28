@@ -10,13 +10,15 @@ class BayesIMP:
     BayesIMP method for estimating posterior moments of average causal effects
     """
 
-    def __init__(self,Kernel_A, Kernel_V, Kernel_Z, dim_A, dim_V, samples, exact):
+    def __init__(self,Kernel_A, Kernel_V, dim_A, dim_V, samples, exact,
+                lengthscale_V_init = 1.0, scale_V_init = 1.0, noise_Y_init = -2.0,
+                lengthscale_A_init = 1.0, scale_A_init = 1.0, noise_feat_init = -2.0):
         d,p = dim_V, dim_A
         self.exact = exact
         
         # Initialising hypers     
-        base_kernel_V = Kernel_V(lengthscale = torch.tensor([d**0.5*1.0]).repeat(d).requires_grad_(True), 
-                                    scale = torch.tensor([1.0], requires_grad = True))
+        base_kernel_V = Kernel_V(lengthscale = torch.tensor(d**0.5*lengthscale_V_init).repeat(d).requires_grad_(True), 
+                                    scale = torch.tensor(scale_V_init, requires_grad = True))
         self.kernel_V = NuclearKernel(base_kernel_V, 
                                             Normal(torch.zeros(d),torch.ones(1)),
                                             samples = samples)
@@ -24,11 +26,11 @@ class BayesIMP:
             self.kernel_V.get_gram = self.kernel_V.get_gram_gaussian
         else:
             self.kernel_V.get_gram = self.kernel_V.get_gram_approx
-        self.noise_Y = torch.tensor(-2.0, requires_grad = True).float()
+        self.noise_Y = torch.tensor(noise_Y_init, requires_grad = True).float()
 
-        self.kernel_A = Kernel_A(lengthscale = torch.ones(p).requires_grad_(True),
-                                  scale = torch.tensor([1.0], requires_grad = True))
-        self.noise_feat = torch.tensor(-2.0, requires_grad = True)
+        self.kernel_A = Kernel_A(lengthscale = torch.tensor(p**0.5*lengthscale_A_init).repeat(p).requires_grad_(True),
+                                  scale = torch.tensor(scale_A_init, requires_grad = True))
+        self.noise_feat = torch.tensor(noise_feat_init, requires_grad = True)
 
     def expand_doA(self, doA, A, intervention_indices):
         """
@@ -70,8 +72,9 @@ class BayesIMP:
         """Training P(Y|V)"""
         n,d = Y.shape[0], V[1].shape[1]
         Y = Y.reshape(n,)
-
         
+        self.kernel_V.base_kernel.lengthscale = median_heuristic(V[1], per_dimension = True).requires_grad_(True)
+
         # Optimiser set up
         params_list = [self.kernel_V.base_kernel.lengthscale,
                                       self.kernel_V.base_kernel.scale,
@@ -104,6 +107,8 @@ class BayesIMP:
         Training P(V|A)
         """
         n,p = A.size()
+
+        self.kernel_A.lengthscale = median_heuristic(A, per_dimension = True).requires_grad_(True)
 
        # Optimiser set up
         params_list = [self.kernel_A.hypers,
@@ -205,7 +210,7 @@ class BayesIMP:
             E_a = torch.linalg.solve(K_a, k_atest.T)  # (n0, N)
             alpha_y = torch.linalg.solve(R_v1, Y)  # (n1, 1)
     
-            return E_a.T @ K_vv0.T @ torch.linalg.solve(K_vv, R_vv1) @ alpha_y  # (N, 1)
+            return E_a.T @ K_vv0.T @ torch.linalg.solve(K_vv + torch.eye(n1+n0)*reg, R_vv1) @ alpha_y  # (N, 1)
             
     """Compute Var[E[Y|do(A)]] in A -> V -> Y"""
     def post_var(self, Y, A, V, doA, doA2=[], reg=1e-4, latent=True, samples=10**5, average_doA=False, intervention_indices=None, diag = True):
@@ -257,7 +262,7 @@ class BayesIMP:
             # Computing matrix vector products
             beta_a = torch.linalg.solve(K_a, k_atest.T)  # (n0, N)
             beta_a2 = torch.linalg.solve(K_a, k_atest2.T)  # (n0, N)
-            alpha_y = torch.linalg.solve(K_v, Y)  # (n1, 1)
+            alpha_y = torch.linalg.solve(R_v, Y)  # (n1, 1)
             KinvR = torch.linalg.solve(K_vv + torch.eye(n) * reg, R_vv)  # (n1, n1)
           
             # Get gram matrix on doA,doA2
@@ -337,7 +342,7 @@ class BayesIMP:
 
             # Computing matrix vector products
             Theta1 = torch.linalg.solve(K_vv+torch.eye(n1+n0)*reg, R_vv0) @ torch.linalg.solve(R_v0v0+torch.eye(n0)*reg, K_v0v0)  # (n1+n0, n1+n0)
-            Theta4 = torch.linalg.solve(K_vv+torch.eye(n1+n0)*reg, R_vv1) @ torch.linalg.solve(K_v1, Y)  # (n1+n0, 1)
+            Theta4 = torch.linalg.solve(K_vv+torch.eye(n1+n0)*reg, R_vv1) @ torch.linalg.solve(R_v1, Y)  # (n1+n0, 1)
             Theta2a = Theta4.T @ R_vv @ Theta4  # (1, 1)
             Theta2b = Theta4.T @ R_vv0 @ torch.linalg.solve(R_v0v0+torch.eye(n0)*reg, R_vv0.T) @ Theta4  # (1, 1)
             Theta3a = torch.trace(torch.linalg.solve(K_vv+torch.eye(n1+n0)*reg, R_vv) @ torch.linalg.solve(K_vv+torch.eye(n1+n0)*reg, R_vv - R_vv1 @ torch.linalg.solve(R_v1, R_vv1.T)))  # scalar

@@ -33,19 +33,109 @@ def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_sample
     else: 
         return Z, V, Y
 
-def BayesIMP_Abelation(n,ntest, sigma_x,sigma_y,sigma_t, get_ET = True, mc_samples = 10**3):
-    X = Normal(0,sigma_x).sample((n+ntest,1))
-    Y = X*torch.cos(pi*X) + Normal(0,sigma_y).sample((n+ntest,1))
-    T = 0.5*Y*torch.cos(Y) + Normal(0,sigma_t).sample((n+ntest,1))
+def Simulation(n,ntest, mc_samples_EYdoX = 10**4, seed = 0, draw_EYdoX = True, noise = 1.0, method = "backdoor_", int_min=None, int_max = None):
+    """
+    method: CATE_backdoor_doD_b, ATT_frontdoor_doB_b, CATE_backdoor_doD_c 
+    """
 
-    Xtrain, Ytrain, Ttrain = X[:n], Y[:n], T[:n]
-    Xtest, Ytest, Ttest =  X[n:], Y[n:], T[n:]
+    torch.manual_seed(seed)
+    
+    m = mc_samples_EYdoX
+    dist = Normal(0,noise)
+    
+    U1 = dist.sample((n,1))
+    U2 = dist.sample((n,1))
+    F =  dist.sample((n,1))
+    A = F**2 + U1 + dist.sample((n,1))
+    B = U2 + dist.sample((n,1))
+    C = torch.exp(-B) + dist.sample((n,1))
+    D = torch.exp(-C)/10 + dist.sample((n,1))
+    E = torch.cos(A) + C/10 + dist.sample((n,1))
+    Y = torch.cos(D) + torch.sin(E) + U1 + U2*dist.sample((n,1))
 
-    if get_ET:
-        Ysample = (Xtest*torch.cos(pi*Xtest)) @ torch.ones((1,mc_samples)) + Normal(0,sigma_y).sample((ntest,mc_samples))
-        ET = (0.5*Ysample*torch.cos(Ysample)).mean(1) + Normal(0,sigma_t).sample((ntest,mc_samples)).mean(1)
+    if draw_EYdoX:
+
+        if method == "ATT_frontdoor_doB_b":
+
+            # Get intervention values
+            b_vals = torch.linspace(int_min,int_max,ntest)[:,None]
+
+            # Sample from p(c|b)
+            C_ = torch.exp(-b_vals) + dist.sample((1,m)) # ntest x m
+
+            # Sample from p(A)
+            U1_ = dist.sample((1,m)) # 1 x n
+            F_ =  dist.sample((1,m)) # 1 x n
+            A_ = F_**2 + U1_ + dist.sample((1,m)) # 1 x n
+
+            # Compute expectations
+            EY1 = torch.cos(torch.exp(-C_)/10 + dist.sample((1,m))).mean(1)
+            EY2 = torch.sin(torch.cos(A_) + C_/10 + dist.sample((1,m))).mean(1)
+            EY = EY1 + EY2
+
+            return A,B,C,D,E,Y,b_vals,EY.reshape(len(EY),1)          
+
+        if method == "CATE_backdoor_doD_b":
+
+            # get conditioning values
+            b_vals = torch.linspace(int_min,int_max,ntest)[:,None]
+
+            # Sample from p(c|b)
+            C_ = torch.exp(-b_vals) + dist.sample((1,m)) # ntest x m
+
+            # Sample from p(A)
+            U1_ = dist.sample((1,m)) # 1 x n
+            F_ =  dist.sample((1,m)) # 1 x n
+            A_ = F_**2 + U1_ + dist.sample((1,m)) # 1 x n
+
+            # Compute expectations
+            EY1 = torch.cos(torch.zeros(1)) # do(D=0)
+            EY2 = torch.sin(torch.cos(A_) + C_/10 + dist.sample((1,m))).mean(1)
+            EY = EY1 + EY2
+
+            return A,B,C,D,E,Y,b_vals,EY.reshape(len(EY),1)
         
-    return Xtrain, Ytrain, Ttrain, Xtest, Ytest, Ttest, ET
+        if method == "CATE_backdoor_doD_bfixed":
+
+            # get conditioning values
+            d_vals = torch.linspace(int_min,int_max,ntest)[:,None]
+            
+            # Sample from p(c|b=0)
+            C_ = torch.exp(-torch.zeros((1,1))) + dist.sample((1,m)) # 1 x m
+
+            # Sample from p(A)
+            U1_ = dist.sample((1,m)) # 1 x n
+            F_ =  dist.sample((1,m)) # 1 x n
+            A_ = F_**2 + U1_ + dist.sample((1,m)) # 1 x n
+
+            # Compute expectations
+            EY1 = torch.cos(d_vals) # do(D=0)
+            EY2 = torch.sin(torch.cos(A_) + C_/10 + dist.sample((1,m)))
+            EY = (EY1 + EY2).mean(1)
+
+            return A,B,C,D,E,Y,d_vals,EY.reshape(len(EY),1)
+
+        if method == "CATE_backdoor_doD_c":
+
+            # get conditioning values
+            c_vals = torch.linspace(int_min,int_max,ntest)[:,None]
+
+            # Sample from p(A)
+            U1_ = dist.sample((1,m)) # 1 x n
+            F_ =  dist.sample((1,m)) # 1 x n
+            A_ = F_**2 + U1_ + dist.sample((1,m)) # 1 x n
+
+            # Compute expectations
+            EY1 = torch.cos(torch.zeros(1)) # do(D=0)
+            EY2 = torch.sin(torch.cos(A_) + c_vals/10 + dist.sample((1,m))).mean(1)
+            EY = EY1 + EY2
+
+            return A,B,C,D,E,Y,c_vals,EY.reshape(len(EY),1)
+    
+    else:
+        return A, B, C, D, E, Y
+    
+    
 
 
 def STATIN_PSA(samples = 10**4, seed = 0, gamma = False, 
