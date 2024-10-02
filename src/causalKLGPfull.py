@@ -451,13 +451,19 @@ class causalKLGP:
                               retrain_iters = 500, retrain_lr = 0.1, sample_split = False, train_cal_split = 0.5,
                               marginal_loss = False, seed=0, average_doA = False, intervention_indices = None): 
         
+            
+        
             # Set up
             if type(V) == list:
                 two_datasets = True
             else:
                 V = [V,V]
                 two_datasets = False
-
+            if W!= None:
+                N_w = len(doW)
+            else:
+                N_w = 1
+                
             if levels == []:
                 levels = torch.linspace(0,1,101)        
             levels = levels.reshape(len(levels),)
@@ -486,7 +492,7 @@ class causalKLGP:
                 Ytr,Vtr,Wtr,Atr  = Y,V,W,A
                 Ycal,Vcal,Wcal,Acal = Y,V,W,A
                 ncal1,ncal0 = n1,n0
-        
+   
             # Training model (for theta(Pn))
             self.train(Ytr, Atr, Vtr, Wtr,
                        reg = reg, niter = niter, learn_rate = learn_rate, switch_grads_off = False,
@@ -511,7 +517,7 @@ class causalKLGP:
                 
 
             # Looping over calibration parameter values and bootstrap datasets
-            Post_levels = torch.zeros((len(nulist),len(doA), len(levels)))
+            Post_levels = torch.zeros((len(nulist),len(doA)*N_w, len(levels)))
             for b in range(len(bootstrap_inds1)):
                     
                 # Getting dataset
