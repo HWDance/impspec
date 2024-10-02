@@ -20,7 +20,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, error_samples = 1
     Kernel = GaussianKernel
     single_kernel = False
     quantiles = torch.linspace(0,1,101)
-    reg = 1e-3
+    reg = 1e-2
     force_PD = True
 
     if kernel == "gaussian":

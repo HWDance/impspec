@@ -20,7 +20,7 @@ from src.CBO import *
 
 def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
          int_samples=10**5, noise=1.0, front_door = False, int_scale = 4,
-         minimise = False):
+         minimise = False, add_base_kernel_BO = False):
 
     """ bayesIMP configs """
     optimise_mu = False
@@ -90,6 +90,19 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
 
     """ Get posterior funcs and CBO prior kernel """
     if front_door:
+        medheur = median_heuristic(A)
+    else:
+        medheur = median_heuristic(W)
+
+    if add_base_kernel_BO:
+        scale_base = 0.1#Y.var()**0.5/2
+    else:
+        scale_base = 0.0                  
+                           
+    rbf_kernel = GaussianKernel(lengthscale=torch.tensor([medheur]).requires_grad_(True), 
+                                scale=torch.tensor(scale_base).requires_grad_(True))
+    
+    if front_door:
         def mean(X):
             doA = X.reshape(len(X),1)
             doW = torch.zeros((1,1))      
@@ -104,7 +117,7 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
         
             return model.post_var(Y,A,V,doA, doA2 = doA2,
                                   W = W, doW = doW, doW2 = doW2,
-                                  diag = diag)
+                                  diag = diag) + rbf_kernel.get_gram(X,Z)
     else:
         def mean(X):
             doA = torch.zeros((1,1))
@@ -121,7 +134,7 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
         
             return model.post_var(Y,A,V,doA, doA2 = doA2,
                                   W = W, doW = doW, doW2 = doW2,
-                                  diag = diag)
+                                  diag = diag) + rbf_kernel.get_gram(X,Z)
     
     cbo_kernel = CBOPriorKernel(cov)  
 

@@ -14,7 +14,7 @@ from src.CBO import *
 
 # main
 def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
-         optimise_mu = True, exact = True, mc_samples = 100):
+         optimise_mu = True, exact = True, mc_samples = 100, add_base_kernel_BO = False):
 
     torch.manual_seed(seed)
     
