@@ -23,6 +23,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     quantiles = torch.linspace(0,1,101)[:,None]
     reg = 1e-3
     bootreps = 20
+    scale_var = False
 
     if kernel == "gaussian":
         Kernel = GaussianKernel
@@ -50,6 +51,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
                                                                      sample_split = sample_split,
                                                                      marginal_loss = marginal_loss,
                                                                      retrain_hypers = retrain_hypers,
+                                                                     scale_var = scale_var
                                                                     )
         best_ind = torch.where(Calibration_losses == Calibration_losses.min())[0][0]
         nu_best = cal_nulist[best_ind]

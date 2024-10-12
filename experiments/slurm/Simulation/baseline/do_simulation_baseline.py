@@ -35,7 +35,8 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
     """ CBO configs """
     n_iter = 10
     xi = 0.0
-    update_hyperparameters = False
+    update_hyperparameters = True
+    update_interval = 5
     noise_init = -10.0
     cbo_reg = 1e-3
         
@@ -153,6 +154,7 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
         
     rbf_kernel = GaussianKernel(lengthscale=torch.tensor([medheur]).requires_grad_(True), 
                                 scale=torch.tensor(Y.var()**0.5/2).requires_grad_(True))
+                                #scale=torch.tensor(1.0).requires_grad_(True))
     cbo_kernel = CausalKernel(
             estimate_var_func=var,
             base_kernel=rbf_kernel,
@@ -165,7 +167,7 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
     
     # Random search for first intervention point
     torch.manual_seed(seed)
-    start = torch.randint(0,99,(1,))[0]
+    start = torch.randint(0,len(vals)-1,(1,))[0]
     doXtrain, EYdoXtrain = doX[start].reshape(1,1), EYdoX[start].reshape(1,1)
     
     # Run CBO iters
@@ -177,6 +179,7 @@ def main(seed, n=100, n_int=100, niter = 1000, learn_rate = 0.1,
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 
                                                         update_hyperparameters = update_hyperparameters,
+                                                        update_interval = update_interval,
                                                         xi = xi, 
                                                         print_ = False, 
                                                         minimise = minimise,

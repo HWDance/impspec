@@ -28,7 +28,8 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     int_samples = 10**5
     n_iter = 20
     xi = 0.0
-    update_hyperparameters = False
+    update_hyperparameters = True
+    update_interval = 5
     noise_init = -10.0
     cbo_reg = 1e-2
 
@@ -80,6 +81,10 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     model.train(Y,A,V,niter,learn_rate, optimise_measure = optimise_mu, mc_samples = mc_samples, reg = reg)
     
     """ Get posterior funcs and CBO prior kernel """
+    medheur = median_heuristic(A)
+    scale_base = 0.01
+    rbf_kernel = GaussianKernel(lengthscale=torch.tensor([medheur]).requires_grad_(True), 
+                                scale=torch.tensor(scale_base).requires_grad_(True))
     def mean(X):
         doA = X.reshape(len(X),1)
         return model.post_mean(Y,A,V,doA,
@@ -96,7 +101,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
                               intervention_indices = [3], 
                               diag = diag)
 
-    cbo_kernel = CBOPriorKernel(cov)
+    cbo_kernel = CBOPriorKernel(cov, rbf_kernel)
 
     """ Run CBO """
     # Define a grid of intervention points and precompute E[Y|do(x)]
@@ -117,6 +122,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 
                                                         update_hyperparameters = update_hyperparameters,
+                                                        update_interval = update_interval,
                                                         xi = xi, 
                                                         print_ = False, 
                                                         minimise = True,

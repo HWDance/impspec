@@ -32,7 +32,8 @@ def main(seed, n, n_int, two_datasets = True):
     int_samples = 10**5
     n_iter = 20
     xi = 0.0
-    update_hyperparameters = False
+    update_hyperparameters = True
+    update_interval = 5
     noise_init = -10.0
     cbo_reg = 1e-3
     
@@ -128,6 +129,7 @@ def main(seed, n, n_int, two_datasets = True):
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 
                                                         update_hyperparameters = update_hyperparameters,
+                                                        update_interval = update_interval,
                                                         xi = xi, 
                                                         print_ = False, 
                                                         minimise = True,

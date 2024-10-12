@@ -3,6 +3,8 @@ from src.GP_utils import *
 from src.kernel_utils import median_heuristic
 from src.kernels import NuclearKernel
 from copy import deepcopy
+from math import pi
+from torch.distributions import Normal, Uniform
 
 class causalKLGP:
     """
@@ -68,7 +70,7 @@ class causalKLGP:
         
         """Training P(Y|V)"""
 
-        self.kernel_V.base_kernel.lengthscale = median_heuristic(V[1], per_dimension = True)
+        self.kernel_V.base_kernel.lengthscale = median_heuristic(V[1], per_dimension = True).requires_grad_(True)
 
         # Optimiser set up
         params_list = [self.kernel_V.base_kernel.lengthscale,
@@ -326,6 +328,55 @@ class causalKLGP:
         alpha_v = torch.linalg.solve(K_v, Phi_v_tilde2)
         mu_f = (Phi_v_tilde2.T @ alpha_y).detach()  # nfeateres x 1
         C_f = (eigs.diag() - Phi_v_tilde2.T @ alpha_v).detach() # nfeatures x nfeatures
+        C_f = 0.5*(C_f + C_f.T)
+        eigs_f,vecs_f = torch.linalg.eig(C_f)
+        eigs_f,vecs_f = eigs_f.real.abs(),vecs_f.real
+        C_fhalf = vecs_f @ eigs_f.diag()**0.5
+        
+        # Getting moments of tilde phi_v
+        k_atesta = self.kernel_A.get_gram(doA,A).detach()
+        K_a = K_aa + (torch.exp(self.noise_feat)+reg)*torch.eye(n)
+        kpost_atest = GPpostvar(A, doA, self.kernel_A, torch.exp(self.noise_feat), latent = True).detach()
+        kpost_atest_noise = GPpostvar(A, doA, self.kernel_A, torch.exp(self.noise_feat), latent = False).detach()
+        mu_l = (Phi_v.T @ torch.linalg.solve(K_a,k_atesta.T)).detach()  # nfeatures x ntest 
+        C_l = kpost_atest.diag().detach() # ntest x 1 (dont need off-diagonals)
+        C_l_noise = kpost_atest_noise.diag().detach() # ntest x 1 (dont need off-diagonals)
+        
+        # Getting samples of f
+        #F_s = MultivariateNormal(mu_f,C_f).sample((samples,)) # nsamples x ntest
+        epsilon = Normal(torch.zeros(features),torch.ones(features)).sample((samples,))
+        F_s = mu_f.T+epsilon @ C_fhalf.T
+        Phi_vs = Normal(mu_l,C_l).sample((samples,)) # nsamples x nfeat # ntest
+        Phi_vs_noise = Normal(mu_l,C_l_noise).sample((samples,)) # nsamples x nfeat # ntest
+        EYdoA_sample = (F_s[...,None]*Phi_vs).sum(1) # nsamples x ntest
+        YdoA_sample = (F_s[...,None]*Phi_vs_noise).sum(1) + Normal(0,torch.exp(self.noise_Y)**0.5).sample((samples,ntest)) # nsamples x ntest
+
+        return EYdoA_sample, YdoA_sample
+
+    def rff_sample(self,Y,V,A,doA, reg = 1e-4, features = 100, samples = 10**3, nu = 1):
+
+        ### NOT COMPATIBLE WITH TWO DATASETS OR AVERAGING
+            
+        # Set up
+        n = len(Y)
+        Y = Y.reshape(n,1)
+        ntest = len(doA)
+
+        # Getting gram matrices
+        K_vv = self.kernel_V.get_gram_base(V,V).detach()
+        K_aa = self.kernel_A.get_gram(A,A).detach()
+
+        
+        # Getting random features (Gaussian kernel)
+        dist = Normal(0,1/self.kernel_V.base_kernel.lengthscale)
+        Phi_v = self.kernel_V.base_kernel.scale*2**0.5*torch.cos(dist.sample((features,)) @ V.T + Uniform(0,2*pi).sample((features,1))).T
+        
+        # Getting moments of f
+        K_v = K_vv + (torch.exp(self.noise_Y)+reg)*torch.eye(n)
+        alpha_y = torch.linalg.solve(K_v,Y)
+        alpha_v = torch.linalg.solve(K_v, Phi_v)
+        mu_f = (1/features*Phi_v.T @ alpha_y).detach()  # nfeateres x 1
+        C_f = 1/features*(torch.eye(features) - 1/features * Phi_v.T @ alpha_v).detach() # nfeatures x nfeatures
         C_f = 0.5*(C_f + C_f.T)
         eigs_f,vecs_f = torch.linalg.eig(C_f)
         eigs_f,vecs_f = eigs_f.real.abs(),vecs_f.real

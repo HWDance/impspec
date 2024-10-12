@@ -6,11 +6,14 @@ from src.GP_utils import GaussianProcess
 
 # CBO prior kernel class
 class CBOPriorKernel:
-    def __init__(self,kernel_func):
-        self.kernel_func = kernel_func
+    def __init__(self,main_kernel,prior_kernel):
+        self.kernel = main_kernel
+        self.prior_kernel = prior_kernel
+        self.parameters = [self.prior_kernel.lengthscale,
+                           self.prior_kernel.scale]
 
     def get_gram(self,X,Z):
-        return self.kernel_func(X,Z)
+        return self.kernel(X,Z)+self.prior_kernel.get_gram(X,Z)
 
 class CausalKernel:
     def __init__(self, estimate_var_func, base_kernel=None, add_base_kernel=True):
@@ -98,7 +101,7 @@ def causal_bayesian_optimization(X_train=None, y_train=None, kernel=None, mean =
     x_best = 0.5
     true_x_best = X_test[torch.argmax(Y_test)]
     i = 0
-    while x_best != true_x_best and i < n_iter:
+    while i < n_iter and x_best != true_x_best:
         # Get the GP predictions for the test grid
         mu_s, cov_s = gp(X_test)
         sigma_s = torch.sqrt(torch.diag(cov_s).abs())

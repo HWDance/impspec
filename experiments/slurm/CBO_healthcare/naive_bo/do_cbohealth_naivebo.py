@@ -21,7 +21,8 @@ def main(seed, n, n_int):
     int_samples = 10**5
     n_iter = 20
     xi = 0.0
-    update_hyperparameters = False
+    update_hyperparameters = True
+    update_interval = 5
     noise_init = -10.0
     cbo_reg = 1e-3
     
@@ -41,10 +42,8 @@ def main(seed, n, n_int):
     def var(X, diag = False):
         return torch.zeros((len(X),1))
 
-            
-    #medheur = median_heuristic(statin[:,None].reshape(n_int,int_samples).mean(1)[:,None])
     rbf_kernel = GaussianKernel(lengthscale=torch.tensor([0.1]).requires_grad_(True), 
-                            scale=torch.tensor([5.0]).requires_grad_(True))
+                            scale=torch.tensor([1.0]).requires_grad_(True))
     cbo_kernel = CausalKernel(
         estimate_var_func=var,
         base_kernel=rbf_kernel,
@@ -70,6 +69,7 @@ def main(seed, n, n_int):
                                                         Y_test = EYdoX, 
                                                         n_iter = n_iter, 
                                                         update_hyperparameters = update_hyperparameters,
+                                                        update_interval = update_interval,
                                                         xi = xi, 
                                                         print_ = False, 
                                                         minimise = True,

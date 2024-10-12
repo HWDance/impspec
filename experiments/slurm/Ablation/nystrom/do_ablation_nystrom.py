@@ -13,7 +13,8 @@ from src.dgps import *
 
 # main
 def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True, sample_split = False,
-         marginal_loss = False, retrain_hypers = False, features = 100, samples = 1000, kernel = "gaussian"):
+         marginal_loss = False, retrain_hypers = False, features = 100, samples = 1000, kernel = "gaussian",
+        approx = "rff"):
 
     torch.manual_seed(seed)
 
@@ -55,11 +56,17 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     
     """ Get Posterior samples """
     mean = model.post_mean(Y, Z, V, doZ).detach()
-    EYdoZ_samples, EVdoZ_samples = model.nystrom_sample(Y,V,Z,doZ, 
+    if approx == "rff":
+        EYdoZ_samples, EVdoZ_samples = model.rff_sample(Y,V,Z,doZ, 
                                                             reg = reg, 
                                                             features = features, 
                                                             samples = samples)
-
+    else:
+        EYdoZ_samples, EVdoZ_samples = model.nystrom_sample(Y,V,Z,doZ, 
+                                                            reg = reg, 
+                                                            features = features, 
+                                                            samples = samples)
+    EYdoZ_samples += mean.T - EYdoZ_samples.mean(0)[None]
     """ Compute out of sample metrics """
     upper_quantiles = 1-(1-quantiles)/2
     lower_quantiles = (1-quantiles)/2

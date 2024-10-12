@@ -62,7 +62,8 @@ class BayesIMP:
         return expanded_doA
 
     """Will eventually be specific to front and back door"""
-    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, optimise_measure = False, measure_init = 1.0, mc_samples = 100):
+    def train(self, Y, A, V, niter, learn_rate, reg = 1e-4, optimise_measure = False, measure_init = 1.0, mc_samples = 100,
+             use_nuclear_front = True, opt_nuclear_phi = False):
 
         self.kernel_V.samples = mc_samples
 
@@ -85,14 +86,18 @@ class BayesIMP:
             params_list.append(self.kernel_V.dist.scale)
             if not self.exact:
                 self.kernel_V.get_gram = partial(self.kernel_V.get_gram, rsample = True)
-            
+        else:
+            self.kernel_V.dist.scale = torch.tensor(measure_init*V[1].var()**0.5)
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
     
         # Updates
         for i in range(niter):
             optimizer.zero_grad()
-            loss = -GPML(Y, V[1], self.kernel_V, torch.exp(self.noise_Y))
+            if not use_nuclear_front:
+                loss = -GPML(Y, V[1], self.kernel_V.base_kernel, torch.exp(self.noise_Y))
+            else:
+                loss = -GPML(Y, V[1], self.kernel_V, torch.exp(self.noise_Y))
             Losses[i] = loss.detach()
             loss.backward()
             optimizer.step()
@@ -115,6 +120,9 @@ class BayesIMP:
                        self.kernel_A.lengthscale,
                         self.kernel_A.scale,
                         self.noise_feat]
+        if opt_nuclear_phi:
+            params_list += [#self.kernel_V.base_kernel.scale.requires_grad_(True),
+                        self.kernel_V.dist.scale.requires_grad_(True)]
         optimizer = torch.optim.Adam(params_list, lr=learn_rate)
         Losses = torch.zeros(niter)
         
