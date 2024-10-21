@@ -307,7 +307,7 @@ class causalKLGP:
         self.kernel_V.dist.loc = V.mean(0)
         
         # Getting gram matrices
-        U = self.kernel_V.dist.sample((features,)).detach()
+        U = self.kernel_V.dist.sample((samples,)).detach()
         K_uu = self.kernel_V.get_gram_base(U,U).detach()
         K_vu = self.kernel_V.get_gram_base(V,U).detach()
         K_vv = self.kernel_V.get_gram_base(V,V).detach()
@@ -319,8 +319,10 @@ class causalKLGP:
         
         # Extending to datapoints
         Phi_v = samples**-0.5*K_vu @ (vecs / eigs)
-        Phi_v_tilde = Phi_v @ eigs.diag()**0.5
-        Phi_v_tilde2 = Phi_v @ eigs.diag()
+        Phi_v_tilde = (Phi_v @ eigs.diag()**0.5)[:,:features]
+        Phi_v_tilde2 = (Phi_v @ eigs.diag())[:,:features]
+        eigs = eigs[:features]
+        Phi_v = Phi_v[:,:features]
         
         # Getting moments of f
         K_v = K_vv + (torch.exp(self.noise_Y)+reg)*torch.eye(n)
@@ -345,7 +347,7 @@ class causalKLGP:
         # Getting samples of f
         #F_s = MultivariateNormal(mu_f,C_f).sample((samples,)) # nsamples x ntest
         epsilon = Normal(torch.zeros(features),torch.ones(features)).sample((samples,))
-        F_s = mu_f.T+epsilon @ C_fhalf.T
+        F_s = mu_f.T+epsilon @ C_fhalf.T # nsamples x nfeat
         Phi_vs = Normal(mu_l,C_l).sample((samples,)) # nsamples x nfeat # ntest
         Phi_vs_noise = Normal(mu_l,C_l_noise).sample((samples,)) # nsamples x nfeat # ntest
         EYdoA_sample = (F_s[...,None]*Phi_vs).sum(1) # nsamples x ntest
