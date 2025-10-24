@@ -70,7 +70,7 @@ def main(seed, n,ntest,d,noise, niter = 500, learn_rate = 0.1, calibrate = True,
     posterior_fraction = ((EYdoZ - mean).abs() <= var**0.5 @ z_quantiles.T).float()
     rmse = ((EYdoZ - mean)**2).mean()**0.5
 
-    return {"name" : "causalklgp_cal={0}_split={1}".format(calibrate, sample_split),
+    return {"name" : "impspec_cal={0}_split={1}".format(calibrate, sample_split),
             "rmse" : rmse, 
            "cal_levels" : quantiles,
            "post_levels" : posterior_fraction,

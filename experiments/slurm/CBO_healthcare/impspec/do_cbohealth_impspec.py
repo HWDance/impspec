@@ -7,7 +7,7 @@ path = Path.cwd().parents[3]
 if str(path) not in sys.path:
     sys.path.append(str(path))
 
-from src.causalKLGP import *
+from src.impspec import *
 from src.kernels import *
 from src.dgps import *
 from src.CBO import *
@@ -19,7 +19,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
     
     torch.manual_seed(seed)
     
-    """ causalklgp configs """
+    """ impspec configs """
     default_nu = 1.0
     cal_nulist = 2**torch.linspace(-4,4,5)
     quantiles = torch.linspace(0,1,101)[:,None]
@@ -70,7 +70,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
         Y = vol_
     
     """ Initialise model """
-    model = causalKLGP(Kernel_A = Kernel, 
+    model = impspec(Kernel_A = Kernel, 
                    Kernel_V = Kernel, 
                    dim_A = A.size()[1], 
                    dim_V = V[1].size()[1], 
@@ -152,7 +152,7 @@ def main(seed, n, n_int, two_datasets = True, niter = 500, learn_rate = 0.1,
                                                         noise_init = noise_init,
                                                         reg = cbo_reg)
 
-    return {"name" : "causalklgp_cal={0}_split={1}".format(calibrate, sample_split),
+    return {"name" : "impspec={0}_split={1}".format(calibrate, sample_split),
             "doXeval" : doXeval, 
            "EYdoXeval" : EYdoXeval,
            }
