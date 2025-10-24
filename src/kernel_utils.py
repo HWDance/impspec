@@ -1,7 +1,7 @@
 import torch
 
 """
-Eigendecompositions
+Eigendecomposition helpers
 """
 
 def kernel_approximations(X_train, kernel_params, mc_approx = True, mc_samples = 10**3, dist = "normal"):

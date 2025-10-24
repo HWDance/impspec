@@ -5,7 +5,7 @@ from src.kernels import NuclearKernel, ProductKernel
 
 class baselineGP:
     """
-    causalKLGP method for estimating posterior moments of average causal effects
+    baseline sampling GP method for estimating posterior moments of average causal effects
     """
 
     def __init__(self,Kernel_A, Kernel_V, Kernel_W = None, dim_A = 1, dim_V = 1, dim_W = 1, single_kernel = False,

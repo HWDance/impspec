@@ -420,7 +420,7 @@ class BayesIMP:
 
             return posterior_variance  
 
-        # Two datasets case
+        # Split datasets case
         else:
             Vall = torch.row_stack((V[0], V[1]))
             n1, n0 = len(Y), len(A)

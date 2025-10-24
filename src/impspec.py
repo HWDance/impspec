@@ -6,9 +6,9 @@ from copy import deepcopy
 from math import pi
 from torch.distributions import Normal, Uniform
 
-class causalKLGP:
+class impspec:
     """
-    causalKLGP method for estimating posterior moments of average causal effects
+    impspec method for estimating posterior moments of average causal effects
     """
 
     def __init__(self,Kernel_A, Kernel_V, dim_A, dim_V, samples, 

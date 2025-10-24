@@ -12,7 +12,6 @@ class Kernel:
         torch.tensor, vector or matrix for scaling inputs X
     scale: 
         torch.tensor, scalar for kernel variance
-        
     """
 
     def __init__(self,lengthscale=[],scale=[], hypers = []):

@@ -33,7 +33,7 @@ class CausalKernel:
 
     def get_gram(self, X1, X2):
         """
-        Computes the kernel matrix between X1 and X2, incorporating dynamically estimated \hat{E}[Y|do(X=x)] and \hat{Var}[\hat{E}[Y|do(X=x)]].
+        Computes the kernel matrix between X1 and X2, using estimated \hat{E}[Y|do(X=x)] and \hat{Var}[\hat{E}[Y|do(X=x)]].
         Optionally adds a base kernel (e.g., RBF kernel) to the causal kernel.
 
         :param X1: First input tensor.

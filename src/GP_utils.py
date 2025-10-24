@@ -20,7 +20,7 @@ class GaussianProcess(nn.Module):
 
     def forward(self, X_test, force_PD = True):
         if self.X_train is None or self.y_train is None or self.X_train.numel() == 0 or self.y_train.numel() == 0:
-            # If there's no training data, return mean m(X_test) and large covariance
+            # If no training data, return mean m(X_test) and large covariance
             mu_s = self.mean_func(X_test)
             cov_s = self.kernel.get_gram(X_test, X_test) + (self.noise.exp() + self.nugget) * torch.eye(len(X_test))
             return mu_s, cov_s

@@ -8,7 +8,15 @@ def f_x(Z,coefs):
 def f_y(X,coefs):
     return (torch.sin(X)*coefs).T.sum(0)
 
-def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_samples_EYdoZ = 10**4, seed = 0, draw_EYdoZ = True):
+def Abelation(n, 
+              ntest, 
+              d, 
+              noise_variance, 
+              doZlower = 0, 
+              doZupper = 1, 
+              mc_samples_EYdoZ = 10**4, 
+              seed = 0, 
+              draw_EYdoZ = True):
 
     torch.manual_seed(seed)
     
@@ -24,7 +32,7 @@ def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_sample
     Y = Normal(fy,(noise_variance*fy.var())**0.5).sample()
     
     if draw_EYdoZ:
-        # Grid-points to approximate true E[Y|do(Z)]
+        # Grid-points used to approximate true E[Y|do(Z)]
         VdoZ = (f_x(doZ,coefs_v)).T[:,:,None] @ torch.ones(mc_samples_EYdoZ).view(1,mc_samples_EYdoZ) + noise_distribution.sample((mc_samples_EYdoZ,ntest)).T
         EYdoZ = (f_y(VdoZ.T,coefs_y)).mean(1).view(ntest,1)
         YdoZ = Normal(f_y(VdoZ[...,0].T,coefs_y),(noise_variance*fy.var())**0.5).sample().view(ntest,1)
@@ -33,7 +41,16 @@ def Abelation(n, ntest, d, noise_variance, doZlower = 0, doZupper = 1, mc_sample
     else: 
         return Z, V, Y
 
-def Simulation(n,ntest, mc_samples_EYdoX = 10**4, seed = 0, draw_EYdoX = True, noise = 1.0, method = "backdoor_", int_min=None, int_max = None):
+def Simulation(n,ntest, 
+               mc_samples_EYdoX = 10**4, 
+               seed = 0, 
+               draw_EYdoX = True, 
+               noise = 1.0, 
+               method = "backdoor_", 
+               int_min=None, 
+               int_max = None, 
+               discrete_D = False,
+               fix_b = False):
     """
     method: CATE_backdoor_doD_b, ATT_frontdoor_doB_b, CATE_backdoor_doD_c 
     """
@@ -48,8 +65,12 @@ def Simulation(n,ntest, mc_samples_EYdoX = 10**4, seed = 0, draw_EYdoX = True, n
     F =  dist.sample((n,1))
     A = F**2 + U1 + dist.sample((n,1))
     B = U2 + dist.sample((n,1))
+    if fix_b:
+        B = B*0
     C = torch.exp(-B) + dist.sample((n,1))
     D = torch.exp(-C)/10 + dist.sample((n,1))
+    if discrete_D:
+        D = 2*(D>=0)-1
     E = torch.cos(A) + C/10 + dist.sample((n,1))
     Y = torch.cos(D) + torch.sin(E) + U1 + U2*dist.sample((n,1))
 

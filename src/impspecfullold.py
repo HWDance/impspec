@@ -3,9 +3,9 @@ from src.GP_utils import *
 from src.kernel_utils import median_heuristic
 from src.kernels import NuclearKernel, ProductKernel
 
-class causalKLGP:
+class impspec:
     """
-    causalKLGP method for estimating posterior moments of average causal effects
+    impspec method for estimating posterior moments of average causal effects
     """
 
     def __init__(self, Kernel_V, Kernel_W, Kernel_Z, dim_V, dim_W, dim_Z, samples):

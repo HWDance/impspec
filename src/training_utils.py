@@ -26,8 +26,8 @@ def get_CV_loss(Y,X,Z,
                 kernel_params_x, kernel_params_z, 
                 y_noise, z_noise,func,folds = []):
     
-    # Randomising order
     """
+    # Permuting samples
     n=len(Y)
     inds = torch.randperm(n)
     Y,X,Z = (Y[inds],

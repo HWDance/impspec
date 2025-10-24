@@ -4,9 +4,9 @@ from src.kernel_utils import median_heuristic
 from src.kernels import NuclearKernel, ProductKernel
 from copy import deepcopy
 
-class causalKLGP:
+class impspec:
     """
-    causalKLGP method for estimating posterior moments of average causal effects
+    impspec method for estimating posterior moments of average causal effects
     """
 
     def __init__(self,Kernel_A, Kernel_V, Kernel_W = None, dim_A = 1, dim_V = 1, dim_W = 1,  samples = 10**5, 
@@ -449,7 +449,7 @@ class causalKLGP:
                               niter = 500, learn_rate = 0.1, reg = 1e-4, force_PD = False, levels = [],
                               bootstrap_replications = 20, retrain_hypers = False, 
                               retrain_iters = 500, retrain_lr = 0.1, sample_split = False, train_cal_split = 0.5,
-                              marginal_loss = False, seed=0, average_doA = False, intervention_indices = None,scale_var = False): 
+                              marginal_loss = False, seed=0, average_doA = False, intervention_indices = None, scale_var = False): 
         
             
         
@@ -534,7 +534,7 @@ class causalKLGP:
                 # iterating over nulist, get post-var and indicator for is_inside_CI per level and do(Z)xdo(W)
                 for k in range(len(nulist)):
                     if scale_var:
-                        varb = nulist[k]**2*self.post_var(Yb, Ab, Vb, doA, W=Wb, doW = doW, reg = reg, latent = True, 
+                        varb = nulist[k]*self.post_var(Yb, Ab, Vb, doA, W=Wb, doW = doW, reg = reg, latent = True, 
                                          average_doA = average_doA, intervention_indices = intervention_indices).detach()
 
                     else:

@@ -175,7 +175,7 @@ class BayesIMP:
             
             return (V1+V2+V3).diag()[:,None]
 
-        # two datasets case
+        # split datasets case
         else:
             Vall = torch.row_stack((V[0],V[1]))
             n1,n0 = len(Y),len(A)
